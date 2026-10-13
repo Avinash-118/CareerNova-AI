@@ -1,0 +1,96 @@
+
+import streamlit as st
+import pandas as pd
+import faiss
+from sentence_transformers import SentenceTransformer
+
+st.set_page_config(
+    page_title="AI Job Matcher",
+    page_icon="💼",
+    layout="wide"
+)
+
+@st.cache_resource
+def load_resources():
+    model = SentenceTransformer("all-MiniLM-L6-v2")
+    index = faiss.read_index("jobs_faiss.index")
+    jobs = pd.read_parquet("jobs_metadata.parquet")
+
+    if index.ntotal != len(jobs):
+        raise ValueError("FAISS index and job metadata do not match.")
+
+    return model, index, jobs
+
+st.title("💼 AI-Powered Job Matching Platform")
+st.write(
+    "Find relevant jobs using AI semantic search "
+    "across 99,999 job postings."
+)
+
+with st.spinner("Loading AI search engine..."):
+    model, index, jobs = load_resources()
+
+st.metric("Jobs in database", f"{index.ntotal:,}")
+
+query = st.text_input(
+    "Describe your ideal job",
+    placeholder="Entry-level Data Analyst jobs with SQL and Python"
+)
+
+num_results = st.slider(
+    "Number of results",
+    min_value=5,
+    max_value=30,
+    value=10,
+    step=5
+)
+
+if st.button("Find Matching Jobs", type="primary"):
+    if not query.strip():
+        st.warning("Please enter a job search description.")
+    else:
+        with st.spinner("Searching matching jobs..."):
+            query_vector = model.encode(
+                [query],
+                convert_to_numpy=True,
+                normalize_embeddings=True
+            )
+
+            scores, indices = index.search(
+                query_vector,
+                num_results
+            )
+
+        st.subheader("Matching Jobs")
+
+        for idx, score in zip(indices[0], scores[0]):
+            if idx < 0:
+                continue
+
+            job = jobs.iloc[idx]
+
+            title = str(job["title"])
+            company = str(job["company"])
+            location = str(job["location"])
+            apply_url = str(job["apply_url"])
+
+            with st.container(border=True):
+                st.subheader(title)
+                st.write(f"**Company:** {company}")
+                st.write(f"**Location:** {location}")
+                st.write(f"**Semantic similarity:** {score:.1%}")
+
+                if apply_url.startswith(("https://", "http://")):
+                    st.link_button(
+                        "Apply on Employer Website",
+                        apply_url
+                    )
+                else:
+                    st.caption("Application link unavailable.")
+
+st.divider()
+st.caption(
+    "AI similarity scores measure semantic relevance, "
+    "not hiring probability. Job availability must be "
+    "verified on the employer's website."
+)

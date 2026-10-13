@@ -1,0 +1,49 @@
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*credentials*.json
+*service_account*.json
+
+# Python
+venv/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# React / Node
+node_modules/
+dist/
+build/
+.vite/
+
+# Large datasets
+*.csv
+*.parquet
+*.xlsx
+*.xls
+*.index
+*.faiss
+
+# Personal files
+*.pdf
+*.docx
+*.doc
+
+# Local databases and logs
+*.db
+*.sqlite
+*.sqlite3
+*.log
+
+# Temporary and backup files
+*.bak
+*.tmp
+*.zip
+
+# OS files
+.DS_Store
+Thumbs.db
