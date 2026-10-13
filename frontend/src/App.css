@@ -321,37 +321,21 @@ button { border: none; }
 
 
 .jobs-page .hero,
-
 .jobs-page .trust-strip,
-
 .jobs-page .features-section,
-
 .jobs-page .steps-section,
-
 .jobs-page .final-cta {
-
-  display: none;
-
+  display: none;
 }
-
-
 
 .jobs-page .jobs-section {
-
-  min-height: 85vh;
-
-  padding-top: 100px;
-
+  min-height: 85vh;
+  padding-top: 100px;
 }
 
-
-
 .feature-card:hover {
-
-  transform: translateY(-5px);
-
-  transition: transform 0.2s ease;
-
+  transform: translateY(-5px);
+  transition: transform 0.2s ease;
 }
 
 /* CareerNova upgrade: features and recommended jobs */
