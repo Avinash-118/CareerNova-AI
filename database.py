@@ -25,6 +25,9 @@ configured_url = os.getenv("DATABASE_URL")
 if configured_url:
     try:
         configured_url = make_url(configured_url)
+        # Keep provider connection strings on our installed psycopg2 driver.
+        if configured_url.drivername in ('postgresql', 'postgres'):
+            configured_url = configured_url.set(drivername='postgresql+psycopg2')
     except ArgumentError:
         # Older local setups used a non-URL placeholder; retain their PostgreSQL settings.
         configured_url = None

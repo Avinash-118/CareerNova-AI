@@ -6,6 +6,13 @@ from deployment_config import validate_production,browser_assistant_enabled
 
 
 class DeploymentTests(unittest.TestCase):
+    @patch.dict(os.environ, {'DATABASE_URL':'postgresql://user:unused@localhost/test'}, clear=True)
+    def test_provider_url_uses_installed_postgres_driver(self):
+        import runpy
+        with patch('sqlalchemy.create_engine') as create:
+            runpy.run_path('database.py', run_name='deployment_test')
+        self.assertEqual(create.call_args.args[0].drivername, 'postgresql+psycopg2')
+
     def test_proxy_precedes_spa_and_preserves_same_origin_api(self):
         config=vercel_config('https://example-api.hf.space/')
         self.assertEqual(config['rewrites'][0],{'source':'/api/:path*','destination':'https://example-api.hf.space/api/:path*'})
