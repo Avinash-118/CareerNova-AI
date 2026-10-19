@@ -200,6 +200,8 @@ app.include_router(auth_router)
 
 @app.get("/api/health", tags=["System"])
 def health_check():
+    with engine.connect() as connection:
+        connection.execute(text('SELECT 1'))
     return {
         "status": "running",
         "application": "CareerNova AI",
@@ -308,10 +310,3 @@ app.include_router(mock_interview_router)
 
 from job_preparation_routes import router as job_preparation_router
 app.include_router(job_preparation_router)
-
-
-@app.get('/api/health')
-def health():
-    with engine.connect() as connection:
-        connection.execute(text('SELECT 1'))
-    return {'status':'ok'}
