@@ -64,7 +64,7 @@ cd frontend
 npm run build
 ```
 
-Container builds and production hosting behavior still require testing on the selected hosting accounts. A passing local build alone does not confirm deployment.
+Container builds and hosted account flows have now been checked as recorded below. A passing local build alone does not confirm deployment.
 
 
 ## Zero-cost Render alternative
@@ -78,4 +78,8 @@ A blueprint does not deploy itself until applied in the hosting account. No Rend
 
 The Linux Docker image built successfully. A backend-import smoke check under a 512 MB container limit completed with approximately 206 MB peak resident memory, without a database connection, loaded semantic model or job-index artifacts. This is a baseline check, not a full traffic/load test. Fourteen deployment/auth/email/interview tests and the frontend build passed.
 
-No cloud service, database migration or new Vercel production deployment has been applied by these local checks. Render authentication, selection of the intended Neon project, backend secrets, live health verification and frontend proxy configuration remain deployment steps.
+Deployment completed on 2026-10-19: frontend https://career-nova-ai-one.vercel.app, backend https://careernova-api.onrender.com, with Neon PostgreSQL. Vercel production was promoted from codex/free-public-deployment. Render tracks that branch; main was not modified. The connection secret was entered by the owner directly in Render. Hosted checks verified registration, email/password login, session persistence after reload, profile save/reload, live job results, saved jobs, and role-only interview startup. The final health endpoint queries PostgreSQL. No test emails were sent.
+
+Cloud limitations: Google/GitHub OAuth is not configured; outgoing email and RUN_ALERT_WORKER remain disabled until a verified HTTPS email provider is configured. Historical FAISS artifacts are not provisioned, semantic feedback models are disabled for memory limits, and the headed application assistant remains local-only. Free Render sleeps when idle. Local accounts and resumes were not migrated. One synthetic deployment-check account remains for verification; it contains no real candidate information.
+
+Additional verification: an isolated Linux container and fresh PostgreSQL 18 passed registration and profile round-trip checks under a 512 MB API memory limit. After the hosted driver fix, four deployment tests and the frontend build passed. A later combined local suite stalled during database integration startup and was stopped; it is not counted as a passing rerun.
