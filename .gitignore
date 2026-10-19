@@ -47,3 +47,6 @@ build/
 # OS files
 .DS_Store
 Thumbs.db
+# Deployment account metadata
+.vercel/
+.deploy/

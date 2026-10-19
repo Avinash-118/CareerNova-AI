@@ -1,10 +1,23 @@
+import {applicationJob} from './resumeApplication.mjs';
+import JobPreparation from './JobPreparation';
+import NovaChatbot from "./NovaChatbot";
+import {SavedSearchControls,SavedSearchPage,ApplicationTimeline} from "./SearchTimeline";
+import {CareerTools,ApplicationBoard,ResumeLibrary,InterviewStudio,RemindersPage,JobComparison,TrustCenter,PrivacyPage,VerifyEmail,AdminPage,JobTrustActions,ProviderButtons} from "./CareerTools";
+import { API_URL, apiFetch, request } from "./api";
+import { AccountRecovery, AlertCenter, SettingsPage, WorkspaceNav } from "./PlatformPages";
+import "./Platform.css";
+import "./App.css";
+import "./CareerNovaMission.css";
+import "./CareerNovaDiscovery.css";
 import ApplicationVoiceAssistant from "./ApplicationVoiceAssistant";
 import CandidateProfilePage from "./CandidateProfilePage";
 import VoiceInput from "./VoiceInput";
-import { useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 import {
-  BrowserRouter,
   Link,
+  Navigate,
+  Outlet,
+  useLocation,
   NavLink,
   Route,
   Routes,
@@ -25,9 +38,92 @@ import {
   Sparkles,
   X,
   Zap,
+  Bot, Send, SlidersHorizontal, Compass, MessageCircle, Sun, Moon, Orbit, Target, Network, Rocket,
 } from "lucide-react";
-import "./App.css";
-const API_URL = "http://127.0.0.1:8000";
+
+// Session credentials live only in an HttpOnly cookie; React stores account display state.
+const AuthContext = createContext(null);
+function useAuth() { return useContext(AuthContext); }
+function AuthProvider({ children }) {
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+  async function refresh() {
+    const response = await apiFetch(`${API_URL}/api/auth/me`);
+    if (!response.ok) { setUser(null); return; }
+    setUser(await response.json());
+  }
+  useEffect(() => {
+    sessionStorage.removeItem("careernova-access-token");
+    sessionStorage.removeItem("careernova-account-name");
+    refresh().catch(() => setUser(null)).finally(() => setLoading(false));
+    const expired = () => setUser(null);
+    window.addEventListener("careernova-session-expired", expired);
+    return () => window.removeEventListener("careernova-session-expired", expired);
+  }, []);
+  async function signOut() {
+    const response = await apiFetch(`${API_URL}/api/auth/logout`, { method: "POST" });
+    if (!response.ok) throw new Error("Could not sign out. Please try again.");
+    setUser(null);
+  }
+  return <AuthContext.Provider value={{ token: !!user, user, loading, accountName: user?.full_name || "", signIn: refresh, signOut }}>{children}</AuthContext.Provider>;
+}
+function ProtectedWorkspace() {
+  const {token, loading} = useAuth();
+  const location = useLocation();
+  if (loading) return <section className="platform-page" role="status">Loading your workspace...</section>;
+  if (!token) return <Navigate to="/login" state={{from: location.pathname}} replace />;
+  return <><WorkspaceNav/><Outlet/></>;
+}
+
+function AuthPage({ mode }) {
+  const navigate = useNavigate();
+  const { token, signIn } = useAuth();
+  const location = useLocation();
+  const registering = mode === "register";
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  async function submit(event) {
+    event.preventDefault();
+    setError("");
+    if (registering && password.length < 12) { setError("Password must be at least 12 characters."); return; }
+    setBusy(true);
+    try {
+      const response = await apiFetch(`${API_URL}/api/auth/${registering ? "register" : "login"}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(registering ? { full_name: fullName.trim(), email: email.trim(), password } : { email: email.trim(), password }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const detail = typeof data.detail === "string" ? data.detail : Array.isArray(data.detail) ? data.detail.map(d => d.msg).join("; ") : `Request failed (HTTP ${response.status})`;
+        throw new Error(detail);
+      }
+      await signIn();
+      setPassword("");
+      navigate(location.state?.from || "/dashboard");
+    } catch (err) { setError(err.message || "Unable to connect to the server."); }
+    finally { setBusy(false); }
+  }
+  if (token) return <section className="section-padding" style={{maxWidth:600,margin:"auto",paddingTop:120,minHeight:"70vh"}}><h1>You are signed in</h1><p>Continue to your candidate profile or explore jobs.</p><Link className="primary-button" to="/profile">My Profile <ArrowRight size={18}/></Link></section>;
+  return <section className="section-padding" style={{maxWidth:570,margin:"auto",paddingTop:120,minHeight:"75vh"}}>
+    <div className="section-heading"><span className="section-kicker">CAREERNOVA / ACCOUNT</span><h1>{registering ? "Create your account" : "Welcome back"}</h1><p>{registering ? "Register to get started with CareerNova AI." : "Sign in to continue your career journey."}</p></div>
+    <ProviderButtons />
+    {new URLSearchParams(location.search).get("oauth_error") && <p role="alert">Provider sign-in could not be completed. If you already have an account, sign in with your password and link the provider in Privacy & security.</p>}
+    <form onSubmit={submit} className="search-panel cn-search-panel" style={{display:"grid",gap:16,padding:28}}>
+      {registering && <label>Full name<input required autoComplete="name" value={fullName} onChange={e=>setFullName(e.target.value)} placeholder="Your full name" style={{display:"block",width:"100%",padding:12,marginTop:6}}/></label>}
+      <label>Email<input required type="email" autoComplete="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@example.com" style={{display:"block",width:"100%",padding:12,marginTop:6}}/></label>
+      <label>Password<input required type="password" autoComplete={registering ? "new-password" : "current-password"} minLength={registering ? 12 : undefined} value={password} onChange={e=>setPassword(e.target.value)} placeholder={registering ? "At least 12 characters" : "Your password"} style={{display:"block",width:"100%",padding:12,marginTop:6}}/></label>
+      {error && <p role="alert" style={{color:"#ff9aa8"}}>{error}</p>}
+      <button className="primary-button" type="submit" disabled={busy}>{busy ? "Please wait..." : registering ? "Create Account" : "Login"} <ArrowRight size={18}/></button>
+      <p>{registering ? "Already registered?" : "New to CareerNova?"} <Link to={registering ? "/login" : "/register"}>{registering ? "Login" : "Create an account"}</Link></p>
+      {!registering && <Link to="/forgot-password">Forgot your password?</Link>}
+    </form>
+  </section>;
+}
+
 const features = [
   {
     icon: Search,
@@ -62,8 +158,21 @@ const features = [
     path: "/dashboard",
   },
 ];
+function ThemeSwitch() {
+  const [theme, setTheme] = useState(() => {
+    try { return localStorage.getItem("careernova-theme") || (window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark"); }
+    catch { return "dark"; }
+  });
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    try { localStorage.setItem("careernova-theme", theme); } catch { /* storage disabled */ }
+  }, [theme]);
+  return <button type="button" className="mission-theme-switch" aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`} title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`} onClick={() => setTheme(t => t === "dark" ? "light" : "dark")}>{theme === "dark" ? <Sun size={19}/> : <Moon size={19}/>}<span>{theme === "dark" ? "Light" : "Dark"}</span></button>;
+}
 function Header() {
   const [menuOpen, setMenuOpen] = useState(false);
+  const { token, accountName, signOut } = useAuth();
+  const navigate = useNavigate();
   return (
     <header className="navbar">
       <Link
@@ -93,14 +202,15 @@ function Header() {
         <Link to="/#how-it-works" onClick={() => setMenuOpen(false)}>
           How It Works
         </Link>
-        <Link
-          className="nav-cta"
-          to="/jobs"
-          onClick={() => setMenuOpen(false)}
-        >
-          Get Started <ArrowUpRight size={16} />
-        </Link>
+        {token ? <>
+          <Link to="/profile" onClick={() => setMenuOpen(false)} title={accountName}>My Account</Link>
+          <button type="button" className="nav-cta" onClick={async () => { try { await signOut(); setMenuOpen(false); navigate("/"); } catch (error) { window.alert(error.message); } }}>Logout</button>
+        </> : <>
+          <NavLink to="/login" onClick={() => setMenuOpen(false)}>Login</NavLink>
+          <Link className="nav-cta" to="/register" onClick={() => setMenuOpen(false)}>Sign Up <ArrowUpRight size={16}/></Link>
+        </>}
       </nav>
+      <ThemeSwitch />
       <button
         className="mobile-menu"
         aria-label="Toggle navigation"
@@ -143,53 +253,66 @@ function Footer() {
 }
 function HomePage() {
   const navigate = useNavigate();
+  const { token } = useAuth();
   const [searchTerm, setSearchTerm] = useState("");
   const [jobs, setJobs] = useState([]);
   useEffect(() => {
+    if (!token) { setJobs([]); return; }
     let active = true;
-    fetch(`${API_URL}/api/jobs?limit=3`)
+    apiFetch(`${API_URL}/api/live-jobs`)
       .then((res) => res.ok ? res.json() : Promise.reject(new Error("Jobs unavailable")))
       .then((data) => { if (active) setJobs(Array.isArray(data.jobs) ? data.jobs : []); })
       .catch(() => {});
     return () => { active = false; };
-  }, []);
+  }, [token]);
   function searchJobs(event) {
     event.preventDefault();
     navigate(searchTerm.trim() ? `/jobs?q=${encodeURIComponent(searchTerm.trim())}` : "/jobs");
   }
   return (
     <>
-      <section className="nova-landing" id="home">
-        <div className="nova-ambient nova-ambient-left" />
-        <div className="nova-ambient nova-ambient-right" />
-        <div className="nova-landing-inner">
-          <div className="nova-kicker"><Sparkles size={14}/> AI-POWERED CAREER PLATFORM</div>
-          <h1>Find your next opportunity.<br/><span>Let AI do the work.</span></h1>
-          <p className="nova-lead">Discover matching jobs, understand your opportunities, and complete applications faster — all in one place.</p>
-          <form className="nova-search" onSubmit={searchJobs}>
-            <Search size={23} aria-hidden="true" />
-            <input aria-label="Search jobs or skills" placeholder="Search jobs, skills, companies..." value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} />
-            <button type="submit" aria-label="Explore matching jobs"><span>Find Jobs</span><ArrowRight size={20}/></button>
-          </form>
-          <div className="nova-quick-links">
-            <Link to="/jobs"><span><Search size={24}/></span><strong>AI Job Matching</strong><small>Discover relevant roles</small><ArrowUpRight size={17}/></Link>
-            <Link to="/resume"><span><FileText size={24}/></span><strong>Resume Analysis</strong><small>Match your experience</small><ArrowUpRight size={17}/></Link>
-            <Link to="/jobs"><span><Sparkles size={24}/></span><strong>Smart Autofill</strong><small>Apply with AI assistance</small><ArrowUpRight size={17}/></Link>
+      <section className="mission-home" id="home">
+        <div className="mission-stars" aria-hidden="true" />
+        <div className="mission-main">
+          <div className="mission-copy">
+            <div className="mission-eyebrow"><span className="mission-status"/> CAREER INTELLIGENCE SYSTEM <span className="mission-version">/ MISSION 01</span></div>
+            <h1>Don't just find a job.<br/><em>Navigate your future.</em></h1>
+            <p className="mission-description">Your AI career command center. Explore live opportunities, understand your strengths, and launch your next move with confidence.</p>
+            <form className="mission-search" onSubmit={searchJobs}>
+              <Search size={21} aria-hidden="true" />
+              <input aria-label="Search live jobs" placeholder="Search roles, skills, companies..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)}/>
+              <button type="submit">Explore <ArrowRight size={18}/></button>
+            </form>
+            <div className="mission-chips"><span>QUICK LAUNCH</span><Link to="/jobs"><Compass size={15}/> Live Jobs</Link><Link to="/resume"><Target size={15}/> Resume Match</Link><Link to="/profile"><Rocket size={15}/> My Profile</Link></div>
+            <div className="mission-trust"><span><span className="mission-status"/> Live opportunities</span><span>AI-powered matching</span><span>Human-approved applications</span></div>
           </div>
-          <div className="nova-landing-bottom"><span><CheckCircle2 size={16}/> Powered by semantic search</span><span><CheckCircle2 size={16}/> Your review before submission</span></div>
+          <div className="galaxy-panel" aria-label="Interactive Career Galaxy navigation">
+            <div className="galaxy-top"><span><Orbit size={16}/> CAREER GALAXY</span><span className="galaxy-coordinate">EXPLORE YOUR UNIVERSE ↗</span></div>
+            <div className="galaxy-space">
+              <svg className="galaxy-orbits" viewBox="0 0 500 440" aria-hidden="true"><circle cx="250" cy="220" r="96"/><circle cx="250" cy="220" r="166"/><circle cx="250" cy="220" r="214"/><path d="M250 220L125 105M250 220L390 126M250 220L375 342M250 220L103 330"/></svg>
+              <div className="galaxy-core"><span className="galaxy-core-icon"><Sparkles size={32}/></span><strong>YOU</strong><small>Career center</small></div>
+              <Link className="galaxy-node galaxy-node-jobs" to="/jobs"><BriefcaseBusiness size={20}/><strong>Discover</strong><small>Live Jobs</small></Link>
+              <Link className="galaxy-node galaxy-node-resume" to="/resume"><FileText size={20}/><strong>Analyze</strong><small>Resume Match</small></Link>
+              <Link className="galaxy-node galaxy-node-profile" to="/profile"><Target size={20}/><strong>Prepare</strong><small>Candidate Profile</small></Link>
+              <Link className="galaxy-node galaxy-node-dashboard" to="/dashboard"><ChartNoAxesCombined size={20}/><strong>Grow</strong><small>Dashboard</small></Link>
+              <span className="galaxy-star galaxy-star-one"/><span className="galaxy-star galaxy-star-two"/><span className="galaxy-star galaxy-star-three"/>
+            </div>
+            <div className="galaxy-bottom"><span><span className="mission-status"/> SYSTEM ONLINE</span><span>SELECT A PLANET TO BEGIN</span></div>
+          </div>
         </div>
+        <div className="mission-launchpad"><Link to="/jobs"><span className="launch-icon"><Compass size={22}/></span><span><strong>Explore opportunities</strong><small>One unified live job feed</small></span><ArrowUpRight size={19}/></Link><Link to="/resume"><span className="launch-icon"><Network size={22}/></span><span><strong>Decode your strengths</strong><small>Match your resume with roles</small></span><ArrowUpRight size={19}/></Link><Link to="/profile"><span className="launch-icon"><Bot size={22}/></span><span><strong>Prepare with Nova</strong><small>Build your candidate profile</small></span><ArrowUpRight size={19}/></Link></div>
       </section>
-      <section className="nova-discover section-padding">
-        <div className="nova-discover-heading"><div><span className="section-kicker">DISCOVER OPPORTUNITIES</span><h2>Explore jobs picked from our listings</h2><p>Browse recently available postings, or search by your skills.</p></div><Link to="/jobs" className="secondary-button">View all jobs <ArrowRight size={17}/></Link></div>
-        <div className="nova-job-grid">
+      <section className="nova-discover section-padding cn-discover">
+        <div className="nova-discover-heading"><div><span className="section-kicker">DISCOVER OPPORTUNITIES</span><h2>Fresh opportunities, one place</h2><p>Explore live remote postings from our connected job source.</p></div><Link to="/jobs" className="secondary-button">View all jobs <ArrowRight size={17}/></Link></div>
+        <div className="nova-job-grid cn-preview-grid">
           {jobs.length ? jobs.slice(0,3).map((job, index) => (
-            <Link to="/jobs" className="nova-job-card" key={job.id || index}>
+            <Link to="/jobs" className="nova-job-card cn-preview-card" key={job.id || index}>
               <div className="nova-job-symbol"><BriefcaseBusiness size={22}/></div>
               <h3>{job.title || "Job opportunity"}</h3><p>{job.company || "Company not listed"}</p>
               <span><MapPin size={14}/>{job.location || "Location not listed"}</span>
               <div className="nova-job-card-bottom">View opportunity <ArrowUpRight size={17}/></div>
             </Link>
-          )) : <div className="nova-no-jobs">Job previews will appear here when your backend returns listings. <Link to="/jobs">Explore Jobs <ArrowRight size={14}/></Link></div>}
+          )) : <div className="nova-no-jobs">{token ? "No opportunities to preview yet. Check the latest listings in your workspace." : "Your next opportunity is waiting. Create a free account to explore jobs and find your match."} <Link to={token ? "/jobs" : "/register"}>{token ? "Explore Jobs" : "Get started"} <ArrowRight size={14}/></Link></div>}
         </div>
       </section>
       <section className="trust-strip">
@@ -303,9 +426,9 @@ function HomePage() {
     </>
   );
 }
-const DASHBOARD_USER = "local-careernova-user";
+
 async function dashboardRequest(path, options = {}) {
-  const response = await fetch(`${API_URL}${path}`, {
+  const response = await apiFetch(`${API_URL}${path}`, {
     ...options,
     headers: { "Content-Type": "application/json", ...options.headers },
   });
@@ -316,25 +439,28 @@ async function dashboardRequest(path, options = {}) {
   return data;
 }
 function SaveJobButton({ job }) {
+  const [tracked,setTracked] = useState(null);
+  const trackedStatus = tracked?.status || job.tracked_status;
+  const trackerId = tracked?.id || job.tracker_id;
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   async function save() {
     setBusy(true);
     setMessage("");
     try {
-      await dashboardRequest("/api/dashboard/save", {
+      const result = await dashboardRequest("/api/dashboard/save", {
         method: "POST",
         body: JSON.stringify({
-          user_id: DASHBOARD_USER,
           job_id: String(job.id ?? ""),
           job_title: job.title || "Untitled position",
           company: job.company || "Unknown company",
           location: job.location || "Not specified",
-          apply_url: job.apply_url || null,
+          apply_url: job.apply_url || job.url || null,
           match_percentage: job.match_percentage == null ? null : Number(job.match_percentage),
         }),
       });
-      setMessage("Saved!");
+      setTracked(result);
+      setMessage(result.message);
     } catch (error) {
       setMessage(error.message);
     } finally {
@@ -343,9 +469,12 @@ function SaveJobButton({ job }) {
   }
   return (
     <div style={{ marginTop: 12 }}>
-      <button type="button" className="secondary-button" disabled={busy} onClick={save}>
-        <Bookmark size={16} /> {busy ? "Saving..." : "Save Job"}
+      <JobTrustActions job={job} />
+      {trackedStatus && <p className="job-tracking-badge">Already tracked · {trackedStatus}</p>}
+      <button type="button" className="secondary-button" disabled={busy || !!trackedStatus} onClick={save}>
+        <Bookmark size={16} /> {busy ? "Saving..." : trackedStatus ? "In your board" : "Save Job"}
       </button>
+      {trackerId && <Link className="timeline-link" to={`/timeline?application=${trackerId}`}>View application activity →</Link>}
       {message && <p role="status" style={{ fontSize: 13 }}>{message}</p>}
     </div>
   );
@@ -388,370 +517,552 @@ function FeaturesPage() {
 }
 
 function JobsPage() {
-  const [query, setQuery] = useState("");
-  const [results, setResults] = useState([]);
+  const navigate = useNavigate();
+  const searchPageLocation = useLocation();
+  const savedSearchId = new URLSearchParams(searchPageLocation.search).get("saved_search");
+  const [query, setQuery] = useState(() => new URLSearchParams(window.location.search).get("q") || "");
+  const [searchTerm, setSearchTerm] = useState(() => new URLSearchParams(window.location.search).get("q") || "");
+  const [jobs, setJobs] = useState([]);
+  const [jobSource, setJobSource] = useState(import.meta.env.VITE_DEFAULT_JOB_SOURCE === "live" ? "live" : "historical");
+  const [total, setTotal] = useState(0);
+  const [availableTotal, setAvailableTotal] = useState(0);
+  const [sources, setSources] = useState({});
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [searched, setSearched] = useState(false);
+  const advancedDefaults = {company:'',skills:'',exclude:'',seniority:'',posted_days:0,sort:'relevance'};
+  const [advanced, setAdvanced] = useState(advancedDefaults);
+  function updateAdvanced(patch) {
+    const next = {...advanced, ...patch};
+    setAdvanced(next);
+    loadJobs({advancedFilters: next});
+  }
+  const [employmentType, setEmploymentType] = useState("");
+  const [workArrangement, setWorkArrangement] = useState("");
+  const [location, setLocation] = useState("");
+  const [role, setRole] = useState("");
   const [selectedJob, setSelectedJob] = useState(null);
-  const [voiceMessage, setVoiceMessage] = useState("");
-  const [agentLoading, setAgentLoading] = useState(false);
   const [assistantJob, setAssistantJob] = useState(null);
-  const [agentMessage, setAgentMessage] = useState("");
+  const [profileMode, setProfileMode] = useState(false);
+  const [voiceActive, setVoiceActive] = useState(false);
+  const [voiceStatus, setVoiceStatus] = useState("Press Start Nova, then say 'Hey Nova'.");
+  const [voiceConversation, setVoiceConversation] = useState([]);
+  const recognitionRef = useRef(null);
+  const voiceActiveRef = useRef(false);
+  const listeningRef = useRef(false);
+  const speakingRef = useRef(false);
+  const jobsRef = useRef([]);
+  const selectedJobRef = useRef(null);
+  const searchRef = useRef(null);
+  const resultsRef = useRef(null);
+  const voiceSearchRef = useRef(false);
+  const voiceHandlerRef = useRef(null);
+  const novaAwakeRef = useRef(false);
+  const speechUtteranceRef = useRef(null);
+  const speechGenerationRef = useRef(0);
+  const restartTimerRef = useRef(null);
+  const recognitionStartingRef = useRef(false);
+  const recognitionReadyRef = useRef(false);
 
-  const [recommendationMode, setRecommendationMode] = useState("latest");
-  const [jobCategory, setJobCategory] = useState("All Jobs");
-  const [recommendedLoading, setRecommendedLoading] = useState(true);
-  const [recommendedError, setRecommendedError] = useState("");
+  const [manualNovaCommand, setManualNovaCommand] = useState("");
+  const latestRequest = useRef(0);
+  const limit = 24;
+  const employmentOptions = ["", "full-time", "part-time", "internship", "contract", "temporary", "research"];
+  const roleOptions = ["", "Data Analyst", "Data Engineer", "Data Scientist", "Software Engineer", "AI Engineer", "Research", "Business Analyst", "Healthcare", "Marketing", "Finance"];
 
-  useEffect(() => {
-    let active = true;
-    async function loadRecommendations() {
-      setRecommendedLoading(true);
-      setRecommendedError("");
-      try {
-        const response = await fetch(`${API_URL}/api/jobs?limit=24`);
-        if (!response.ok) throw new Error(`Unable to load recommendations (HTTP ${response.status})`);
-        const data = await response.json();
-        if (active) {
-          setResults(Array.isArray(data.jobs) ? data.jobs : []);
-          setSearched(true);
-          setRecommendationMode("latest");
+  function normalizeJob(job) {
+    const place = String(job.location || "Not specified");
+    const statedMode = String(job.work_mode || "");
+    const mode = statedMode || (/hybrid/i.test(place) ? "Hybrid" : /remote|worldwide/i.test(place) ? "Remote" : /on.site|onsite|office/i.test(place) ? "On-site" : "Not specified");
+    const url = job.apply_url || job.url || "";
+    return {
+      ...job,
+      id: String(job.id || url || ""),
+      apply_url: url,
+      source_slug: job.source_slug || job.source || "Dataset",
+      work_mode: mode,
+      description: job.description || job.job_description || "",
+      listing_status: job.listing_status || "historical_unverified",
+    };
+  }
+
+  async function loadJobs({ requestedPage = 1, append = false, refresh = false, term = searchTerm, type = employmentType, mode = workArrangement, city = location, field = role, source = jobSource, advancedFilters = advanced } = {}) {
+    const requestId = ++latestRequest.current;
+    setLoading(true);
+    setError("");
+    try {
+      const params = new URLSearchParams({ page: String(requestedPage), limit: String(limit) });
+      const combined = [term, field].map(s => String(s || "").trim()).filter(Boolean).join(" ");
+      Object.entries(advancedFilters).forEach(([key,value]) => { if(value) params.set(key,String(value)); });
+      if (combined) params.set("query", combined);
+      if (type) params.set("employment_type", type);
+      if (mode) params.set(source === "historical" ? "work_mode" : "work_arrangement", mode);
+      if (city.trim()) params.set("location", city.trim());
+      if (refresh && source === "live") params.set("refresh", "true");
+      const endpoint = source === "historical" ? "/api/historical-jobs" : "/api/jobs/discover";
+      const response = await apiFetch(`${API_URL}${endpoint}?${params}`);
+      const data = await response.json();
+      if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : `Job search failed (HTTP ${response.status}). Check the backend.`);
+      if (requestId !== latestRequest.current) return;
+      const incoming = (Array.isArray(data.jobs) ? data.jobs : []).map(normalizeJob);
+      setJobs(previous => append ? [...previous, ...incoming] : incoming);
+      setTotal(Number(data.total || 0));
+      setAvailableTotal(source === "historical" ? Number(data.available_total ?? data.total ?? 0) : Number(data.available_total || 0));
+      setSources(source === "historical" ? { Dataset: true } : (data.sources || {}));
+      setPage(requestedPage);
+      setProfileMode(false);
+      if (voiceSearchRef.current && !append) {
+        voiceSearchRef.current = false;
+        window.requestAnimationFrame(() => resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+        const count = Number(data.total || 0);
+        if (count === 0) say("I couldn't find matching jobs. Try a different job title or employment type.");
+        else {
+          const examples = incoming.slice(0, 3).map((job, i) => `Number ${i + 1}, ${job.title} at ${job.company}`).join(". ");
+          say(`I found ${count} ${source === "historical" ? "stored job records" : "live job matches"}. ${examples}. Which job would you like to explore?`);
         }
-      } catch (error) {
-        if (active) setRecommendedError(error.message);
-      } finally {
-        if (active) setRecommendedLoading(false);
       }
+    } catch (err) {
+      if (requestId === latestRequest.current) {
+        setError(err.message || "Could not load jobs.");
+        if (voiceSearchRef.current) { voiceSearchRef.current = false; say("The job search failed. Please check your backend connection."); }
+      }
+    } finally {
+      if (requestId === latestRequest.current) setLoading(false);
     }
-    loadRecommendations();
-    return () => { active = false; };
-  }, []);
+  }
+
+  function changeJobSource(nextSource) {
+    if (nextSource === jobSource) return;
+    setJobSource(nextSource);
+    setJobs([]);
+    setTotal(0);
+    setPage(1);
+    loadJobs({ source: nextSource, requestedPage: 1 });
+  }
+
+  function applySavedFilters(filters) {
+    setJobSource(filters.source);setQuery(filters.term);setSearchTerm(filters.term);
+    setEmploymentType(filters.type);setWorkArrangement(filters.mode);setLocation(filters.city);setRole(filters.field);
+    const restored = Object.fromEntries(Object.keys(advancedDefaults).map(key => [key, filters[key] ?? advancedDefaults[key]]));
+    setAdvanced(restored);
+    loadJobs({...filters,advancedFilters:restored,requestedPage:1});
+  }
+  useEffect(() => {
+    let active=true;
+    if(savedSearchId){
+      setLoading(true);setError("");
+      request(`/api/saved-searches/${encodeURIComponent(savedSearchId)}`)
+        .then(saved=>{if(active)applySavedFilters(saved.filters);})
+        .catch(error=>{if(active){setError(error.message);setLoading(false);}});
+    }else loadJobs();
+    return()=>{active=false;};
+  }, [savedSearchId]);
+  useEffect(() => { jobsRef.current = jobs; }, [jobs]);
+  useEffect(() => { selectedJobRef.current = selectedJob; }, [selectedJob]);
+  useEffect(() => { searchRef.current = loadJobs; });
+
+  function updateFilters(patch) {
+    const next = { term: searchTerm, type: employmentType, mode: workArrangement, city: location, field: role, ...patch };
+    if ("term" in patch) { setSearchTerm(next.term); setQuery(next.term); }
+    if ("type" in patch) setEmploymentType(next.type);
+    if ("mode" in patch) setWorkArrangement(next.mode);
+    if ("city" in patch) setLocation(next.city);
+    if ("field" in patch) setRole(next.field);
+    loadJobs(next);
+  }
 
   async function personalizeJobs() {
     setLoading(true);
     setError("");
     try {
-      const profileResponse = await fetch(`${API_URL}/api/profile/local-candidate`);
-      if (!profileResponse.ok) throw new Error("Save your Candidate Profile to get personalized recommendations.");
-      const profile = await profileResponse.json();
-      const skills = String(profile.skills || "").trim();
-      if (!skills) throw new Error("Add your skills in My Profile to personalize recommendations.");
-      const url = new URL(`${API_URL}/api/ai-search`);
-      url.searchParams.set("q", skills.slice(0, 400));
-      url.searchParams.set("limit", "20");
-      const response = await fetch(url.toString());
-      if (!response.ok) throw new Error(`AI recommendations unavailable (HTTP ${response.status})`);
-      const data = await response.json();
-      setResults(Array.isArray(data.jobs) ? data.jobs : []);
-      setSearched(true);
-      setRecommendationMode("personalized");
-      setSelectedJob(null);
-    } catch (error) {
-      setError(error.message);
-    } finally {
-      setLoading(false);
-    }
+      const response = await apiFetch(`${API_URL}/api/profile/me`);
+      if (!response.ok) throw new Error("Save your Candidate Profile before matching jobs.");
+      const profile = await response.json();
+      const skills = String(profile.skills || "").toLowerCase().split(/[,;\n]+/).map(x => x.trim()).filter(x => x.length > 2);
+      if (!skills.length) throw new Error("Add skills to your Candidate Profile first.");
+      const responseJobs = await apiFetch(`${API_URL}/api/live-jobs`);
+      if (!responseJobs.ok) throw new Error("Live jobs are unavailable.");
+      const data = await responseJobs.json();
+      const matches = (data.jobs || []).map(normalizeJob).filter(job => skills.some(skill => `${job.title} ${job.description}`.toLowerCase().includes(skill)));
+      setJobs(matches.slice(0, 100));
+      setTotal(matches.length);
+      setAvailableTotal(Number(data.total || 0));
+      setPage(1);
+      setProfileMode(true);
+      setJobSource("live");
+    } catch (err) { setError(err.message); }
+    finally { setLoading(false); }
   }
 
-  const categories = ["All Jobs", "Data Analyst", "Data Engineer", "Data Scientist", "Internships"];
-  const visibleJobs = results.filter((job) => {
-    const title = String(job.title || "").toLowerCase();
-    const type = String(job.employment_type || "").toLowerCase();
-    if (jobCategory === "All Jobs") return true;
-    if (jobCategory === "Internships") return title.includes("intern") || type.includes("intern");
-    return title.includes(jobCategory.toLowerCase());
-  });
-
-  async function searchJobs(searchText) {
-    const term = searchText.trim();
-    if (!term) {
-      setError("Please enter a job title or skill.");
+  // Stop the microphone before speaking so Nova does not transcribe its own voice.
+  function say(text) {
+    const message = String(text || "").trim();
+    if (!message) return;
+    setVoiceStatus(message);
+    setVoiceConversation(previous => [...previous.slice(-7), { who: "Nova", text: message }]);
+    if (!("speechSynthesis" in window)) {
+      setVoiceStatus(`${message} (Audio output is not supported by this browser.)`);
       return;
     }
-    setLoading(true);
-    setError("");
-    setSearched(true);
-    setResults([]);
-    setSelectedJob(null);
-    setVoiceMessage("");
-    try {
-      const url = new URL(`${API_URL}/api/ai-search`);
-      url.searchParams.set("q", term);
-      url.searchParams.set("limit", "20");
-      const response = await fetch(url.toString());
-      if (!response.ok) {
-        throw new Error(`Search failed (HTTP ${response.status})`);
+
+    const generation = ++speechGenerationRef.current;
+    speakingRef.current = true;
+    if (restartTimerRef.current) clearTimeout(restartTimerRef.current);
+    try { recognitionRef.current?.abort(); } catch { /* already stopped */ }
+    try { window.speechSynthesis.cancel(); } catch { /* ignore */ }
+
+    const utterance = new SpeechSynthesisUtterance(message);
+    speechUtteranceRef.current = utterance; // Keep the utterance alive in Chrome.
+    utterance.lang = "en-US";
+    utterance.rate = 0.97;
+    utterance.pitch = 1;
+    utterance.volume = 1;
+    const voices = window.speechSynthesis.getVoices();
+    utterance.voice = voices.find(v => v.lang?.toLowerCase().startsWith("en") && /google|microsoft/i.test(v.name))
+      || voices.find(v => v.lang?.toLowerCase().startsWith("en")) || null;
+
+    const finish = () => {
+      if (generation !== speechGenerationRef.current) return;
+      speakingRef.current = false;
+      speechUtteranceRef.current = null;
+      if (voiceActiveRef.current) scheduleListening(500);
+    };
+    utterance.onend = finish;
+    utterance.onerror = (event) => {
+      if (event.error !== "canceled" && event.error !== "interrupted") {
+        setVoiceStatus(`Speech playback failed (${event.error}). ${message}`);
       }
-      const data = await response.json();
-      setResults(Array.isArray(data.jobs) ? data.jobs : []);
-      setRecommendationMode("search");
-      setJobCategory("All Jobs");
-    } catch (err) {
-      setError(err.message || "Unable to search jobs.");
-    } finally {
-      setLoading(false);
+      finish();
+    };
+    // Some Chromium versions need a brief delay after stopping recognition.
+    setTimeout(() => {
+      if (generation !== speechGenerationRef.current) return;
+      try { window.speechSynthesis.speak(utterance); }
+      catch { finish(); }
+    }, 120);
+  }
+
+  function scheduleListening(delay = 350) {
+    if (restartTimerRef.current) clearTimeout(restartTimerRef.current);
+    restartTimerRef.current = setTimeout(() => restartListening(), delay);
+  }
+
+  function restartListening() {
+    if (!voiceActiveRef.current || speakingRef.current || listeningRef.current || recognitionStartingRef.current) return;
+    const recognition = recognitionRef.current;
+    if (!recognition) return;
+    recognitionStartingRef.current = true;
+    try { recognition.start(); }
+    catch {
+      recognitionStartingRef.current = false;
+      if (voiceActiveRef.current && !speakingRef.current) scheduleListening(850);
     }
   }
-  function handleSearch(event) {
-    event.preventDefault();
-    searchJobs(query);
-  }
-  function selectJob(job) {
+
+  // Check reusable candidate details before opening a third-party application.
+  async function beginNovaApplication(job) {
+    if (!job) { say("Please choose a job first."); return; }
+    selectedJobRef.current = job;
     setSelectedJob(job);
-    setAgentMessage("");
-    setVoiceMessage(`Selected: ${job.title || "Untitled position"}`);
-  }
-  function launchApplicationAssistant() {
-    if (!selectedJob || agentLoading) return;
-    const applyUrl = selectedJob.apply_url;
-    if (typeof applyUrl !== "string" || !/^https?:\/\//i.test(applyUrl)) {
-      setAgentMessage("This job has no valid application URL.");
-      return;
+    if (!/^https?:\/\//i.test(job.apply_url || job.url || "")) {
+      say("This posting has no valid application link. Please select another job."); return;
     }
-    // The assistant owns the Playwright session. Do not also open a separate browser.
-    setAssistantJob(selectedJob);
-    setSelectedJob(null);
-  }
-  function handleVoiceTranscript(spokenText) {
-    const speech = spokenText.trim();
-    const command = speech.toLowerCase().replace(/[.!?]+$/g, "").trim();
-    const action = /^(?:please\s+)?(?:select|choose|open|show(?:\s+me)?|apply\s+(?:for|to))\s+(.+)$/i.exec(command);
-    if (action && results.length) {
-      const target = action[1].replace(/^(?:the|job|position)\s+/i, "").trim();
-      const ordinals = { first: 1, second: 2, third: 3, fourth: 4, fifth: 5,
-        sixth: 6, seventh: 7, eighth: 8, ninth: 9, tenth: 10 };
-      const numberMatch = /^(?:(?:job|position|number)\s+)?(\d+)(?:st|nd|rd|th)?(?:\s+(?:job|position))?$/i.exec(target);
-      const ordinalMatch = /^(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth)(?:\s+(?:job|position))?$/i.exec(target);
-      const position = numberMatch ? Number(numberMatch[1]) : ordinalMatch ? ordinals[ordinalMatch[1]] : null;
-      let found = null;
-      if (position !== null) {
-        found = results[position - 1] || null;
-      } else {
-        const normalized = target.replace(/^(?:the|for)\s+/i, "").replace(/\s+(?:job|position)$/i, "");
-        found = results.find((job) => (job.title || "").toLowerCase().includes(normalized));
+    say(`You selected ${job.title} at ${job.company}. I will check your candidate profile before applying.`);
+    try {
+      let response = await apiFetch(`${API_URL}/api/profile/me`);
+      if (!response.ok) throw new Error("Profile service unavailable");
+      const profile = await response.json();
+      const required = [
+        ["first name", profile.first_name || profile.full_name?.trim().split(/\s+/)[0]],
+        ["last name", profile.last_name || (profile.full_name?.trim().split(/\s+/).slice(1).join(" "))],
+        ["email", profile.email],
+        ["phone", profile.phone],
+        ["location", profile.location],
+      ];
+      const missing = required.filter(([, value]) => !String(value || "").trim()).map(([label]) => label);
+      if (missing.length) {
+        sessionStorage.setItem("careernova-pending-application", JSON.stringify(job));
+        say(`Before applying, please fill in your Candidate Profile. Missing details: ${missing.join(", ")}. I am opening your profile now. Save it, then return to Explore Jobs and say continue application.`);
+        // Delay navigation so Nova can speak the instructions before unmounting.
+        setTimeout(() => navigate("/profile"), 6500);
+        return;
       }
-      if (found) {
-        selectJob(found);
-      } else {
-        setVoiceMessage("I couldn't identify that job. Try 'select the first job' or use a job's Select Job button.");
-      }
+      sessionStorage.removeItem("careernova-pending-application");
+      setAssistantJob(job);
+      setSelectedJob(null);
+      say("Your essential profile details are saved. Opening the application assistant now. I will reuse your saved details where supported, ask for missing answers, and let you review before submitting.");
+    } catch {
+      say("I could not check your Candidate Profile. Please check the backend and your profile before starting an application.");
+    }
+  }
+
+  function handleNovaCommand(transcript) {
+    const text = transcript.trim();
+    let command = text.toLowerCase().replace(/[.!?]/g, "").trim();
+    setVoiceConversation(previous => [...previous.slice(-7), { who: "You", text }]);
+    if (/^(stop nova|goodbye nova|nova stop|stop listening)$/.test(command)) { stopNova(); return; }
+    const greeted = /^(?:(?:hey|hi|hello|okay|ok)\s+)?(?:nova|noah|novah)\b/.test(command);
+    if (greeted) {
+      novaAwakeRef.current = true;
+      command = command.replace(/^(?:(?:hey|hi|hello|okay|ok)\s+)?(?:nova|noah|novah)[ ,]*/, "").trim();
+      if (!command) { say("Hi! What can I help you with today?"); return; }
+    }
+    if (!novaAwakeRef.current) { setVoiceStatus("Say Hey Nova to wake me up."); return; }
+    if (/^(help|what can you do|show commands)$/.test(command)) {
+      say("I can find and filter live jobs, read the top results, match your profile, save a selected job, open your dashboard and resume matching, and help start applications. What would you like to do?");
       return;
     }
-    if (action && !results.length) {
-      setVoiceMessage("Search for jobs first, then say which one to select.");
+    if (/^(show|open|go to|navigate to) (my |the )?(dashboard|saved jobs)$/.test(command)) {
+      say("Opening your career dashboard."); navigate("/dashboard"); return;
+    }
+    if (/^(show|open|go to|navigate to) (my |the )?(profile|candidate profile)$/.test(command)) {
+      say("Opening your candidate profile."); navigate("/profile"); return;
+    }
+    if (/^(show|open|go to|navigate to) (my |the )?(resume|resume matching|resume match)$/.test(command)) {
+      say("Opening resume matching."); navigate("/resume"); return;
+    }
+    if (/^(go home|open home|home page)$/.test(command)) {
+      say("Opening CareerNova home."); navigate("/"); return;
+    }
+    if (/^(match my profile|find jobs for my profile|personalize jobs)$/.test(command)) {
+      say("Matching your saved skills against the live job feed."); personalizeJobs(); return;
+    }
+    if (/^(read|list|tell me|show) (the )?(first|top|next)?\s*(three|3)?\s*(jobs|results|suggestions)$/.test(command)) {
+      if (!jobsRef.current.length) { say("No jobs are displayed. Ask me to find a role first."); return; }
+      say(jobsRef.current.slice(0, 3).map((job,i)=>`Job ${i+1}: ${job.title} at ${job.company}`).join(". ") + ". Which one interests you?");
       return;
     }
-    const cleaned = speech.replace(/^(please\s+)?(find|search for|show me|look for)\s+/i, "").replace(/\s+jobs?\s*$/i, " jobs");
+    const detailsMatch = command.match(/^(?:tell me about|details (?:for|of)|describe|what about) (?:the )?(first|second|third|[1-3])(?: job| one)?$/);
+    if (detailsMatch) {
+      const positions = { first: 0, second: 1, third: 2, "1": 0, "2": 1, "3": 2 };
+      const chosen = jobsRef.current[positions[detailsMatch[1]]];
+      if (!chosen) { say("That job is not in the current results. Search for jobs first."); return; }
+      selectedJobRef.current = chosen;
+      setSelectedJob(chosen);
+      const summary = String(chosen.description || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 380);
+      say(`${chosen.title} at ${chosen.company}. Location: ${chosen.location || "not specified"}. ${summary || "Open the job posting for the full description."} Say start application when you're ready.`);
+      return;
+    }
+    if (/^(save|bookmark) (this|the|selected|current) job$/.test(command)) {
+      const job = selectedJobRef.current;
+      if (!job) { say("Select a job first, for example, apply for the first job."); return; }
+      dashboardRequest("/api/dashboard/save", {method:"POST",body: JSON.stringify({user_id:DASHBOARD_USER,job_id:String(job.id),job_title:job.title,company:job.company,location:job.location,apply_url:job.apply_url || null,match_percentage:null})})
+        .then(()=>say(`Saved ${job.title} to your dashboard.`))
+        .catch(()=>say("I could not save that job. Check your backend connection."));
+      return;
+    }
+    if (/^(cancel|close|never mind|never mind nova)$/.test(command)) { setSelectedJob(null); selectedJobRef.current=null; say("Okay, I closed the job selection."); return; }
+
+    if (/^(start application|launch assistant|continue application|yes start application|apply now)$/.test(command)) {
+      const pending = sessionStorage.getItem("careernova-pending-application");
+      let chosen = selectedJobRef.current;
+      if (!chosen && pending) { try { chosen = JSON.parse(pending); } catch { /* invalid stored job */ } }
+      beginNovaApplication(chosen);
+      return;
+    }
+    if (/refresh (?:the )?jobs/.test(command)) {
+      voiceSearchRef.current = true;
+      searchRef.current?.({ refresh: true });
+      setVoiceStatus("Refreshing job listings...");
+      return;
+    }
+    // Only treat an explicit job number, ordinal, or selected job title as an application choice.
+    // "I want to apply for full-time data analyst jobs" is a SEARCH, not a selection.
+    const selection = command.match(/(?:apply (?:for|to)|select|choose|open)\s+(?:the\s+)?(.+)/);
+    const selectionTarget = selection?.[1]?.replace(/\s+(?:job|position)$/i, "").trim() || "";
+    const ordinals = { first: 1, second: 2, third: 3, fourth: 4, fifth: 5, sixth: 6, seventh: 7, eighth: 8, ninth: 9, tenth: 10 };
+    const ordinal = Object.entries(ordinals).find(([word]) => new RegExp(`\\b${word}\\b`).test(selectionTarget));
+    const number = selectionTarget.match(/(?:number|job)\s*(\d+)/) || selectionTarget.match(/^(\d+)$/);
+    const isGeneralSearch = /\b(jobs|internships|positions|opportunities)\b/.test(selectionTarget);
+    if (selection && (ordinal || number || (!isGeneralSearch && selectionTarget.length >= 3 && jobsRef.current.some(job => job.title.toLowerCase().includes(selectionTarget))))) {
+      const index = ordinal ? ordinal[1] - 1 : number ? Number(number[1]) - 1 : -1;
+      const found = index >= 0 ? jobsRef.current[index] : jobsRef.current.find(job => job.title.toLowerCase().includes(selectionTarget));
+      if (!found) { say("That job is not among the currently displayed results. Try another job number."); return; }
+      selectedJobRef.current = found;
+      setSelectedJob(found);
+      if (/\bapply\b/.test(command)) beginNovaApplication(found);
+      else say(`You selected ${found.title} at ${found.company}. Say start application when ready.`);
+      return;
+    }
+    if (/\b(open youtube|open chrome|shutdown|delete files|send email|send message|whatsapp|play music|weather|turn off computer)\b/.test(command)) {
+      say("That action isn't connected to CareerNova yet. I can operate job search, profile navigation, saved jobs, and supported applications.");
+      return;
+    }
+    let cleaned = command
+      .replace(/^(?:i want to|i would like to|can you|could you|please|i am looking for|i'm looking for)\s+/i, "")
+      .replace(/^(?:apply for|find me|find|search for|search|show me|look for|looking for)\s+/i, "")
+      .replace(/^(?:a|an|the)\s+/i, "")
+      .replace(/\b(jobs|job openings|positions|opportunities)\s*$/i, "")
+      .trim();
+    let type = "";
+    if (/\b(full[ -]?time)\b/i.test(cleaned)) type = "full-time";
+    else if (/\b(part[ -]?time)\b/i.test(cleaned)) type = "part-time";
+    else if (/\b(internships?|interns?)\b/i.test(cleaned)) type = "internship";
+    else if (/\b(contract|contractor)\b/i.test(cleaned)) type = "contract";
+    else if (/\btemporary\b/i.test(cleaned)) type = "temporary";
+    cleaned = cleaned.replace(/\b(full[ -]?time|part[ -]?time|internships?|interns?|contractor?|temporary)\b/gi, " ").replace(/\s+/g, " ").trim();
+    let mode = "";
+    if (/\bremote\b/i.test(cleaned)) mode = "remote";
+    else if (/\bhybrid\b/i.test(cleaned)) mode = "hybrid";
+    else if (/\b(on[ -]?site|in office)\b/i.test(cleaned)) mode = "on-site";
+    cleaned = cleaned.replace(/\b(remote|hybrid|on[ -]?site|in office)\b/gi, " ").replace(/\s+/g, " ").trim();
+    if (!cleaned && !type && !mode) { say("Tell me which jobs you'd like to find."); return; }
     setQuery(cleaned);
-    searchJobs(cleaned);
+    setSearchTerm(cleaned);
+    setEmploymentType(type);
+    setWorkArrangement(mode);
+    setRole("");
+    setLocation("");
+    voiceSearchRef.current = true;
+    setVoiceStatus(`Searching for ${[type, mode, cleaned].filter(Boolean).join(" ")} jobs...`);
+    searchRef.current?.({ term: cleaned, type, mode, city: "", field: "", requestedPage: 1 });
   }
+  voiceHandlerRef.current = handleNovaCommand;
+
+  function startNova() {
+    const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!Recognition) { setVoiceStatus("Speech recognition is not supported here. Try the latest Chrome or Edge on localhost."); return; }
+    // Starting is a user gesture: prime the voice engine and request microphone permission.
+    try { window.speechSynthesis.getVoices(); window.speechSynthesis.resume(); } catch { /* ignore */ }
+    const recognition = new Recognition();
+    recognition.lang = "en-US";
+    recognition.continuous = true;
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 3;
+    recognition.onstart = () => {
+      recognitionStartingRef.current = false;
+      listeningRef.current = true;
+      recognitionReadyRef.current = true;
+      setVoiceStatus("Listening... say Hey Nova.");
+    };
+    recognition.onend = () => {
+      listeningRef.current = false;
+      recognitionStartingRef.current = false;
+      if (voiceActiveRef.current && !speakingRef.current) scheduleListening(600);
+    };
+    recognition.onerror = event => {
+      recognitionStartingRef.current = false;
+      if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+        voiceActiveRef.current = false;
+        setVoiceActive(false);
+        setVoiceStatus("Microphone permission denied. Click the site controls beside localhost:5173 and allow microphone access.");
+      } else if (event.error === "network") {
+        setVoiceStatus("Speech recognition network service is unavailable. You can still type Nova commands.");
+        voiceActiveRef.current = false;
+        setVoiceActive(false);
+      }
+    };
+    recognition.onresult = event => {
+      if (speakingRef.current) return;
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        if (!event.results[i].isFinal) continue;
+        const alternatives = Array.from(event.results[i]).map(item => item.transcript.trim()).filter(Boolean);
+        const transcript = alternatives.find(item => /\b(?:nova|noah|novah)\b/i.test(item)) || alternatives[0];
+        if (transcript) voiceHandlerRef.current?.(transcript);
+      }
+    };
+    recognitionRef.current = recognition;
+    voiceActiveRef.current = true;
+    novaAwakeRef.current = false;
+    setVoiceActive(true);
+    restartListening();
+  }
+  function stopNova() {
+    voiceActiveRef.current = false;
+    novaAwakeRef.current = false;
+    setVoiceActive(false);
+    if (restartTimerRef.current) clearTimeout(restartTimerRef.current);
+    ++speechGenerationRef.current;
+    try { recognitionRef.current?.abort(); } catch { /* ignore */ }
+    try { window.speechSynthesis?.cancel(); } catch { /* ignore */ }
+    listeningRef.current = false;
+    recognitionStartingRef.current = false;
+    speakingRef.current = false;
+    speechUtteranceRef.current = null;
+    setVoiceStatus("Nova stopped. Press Start Nova to activate again.");
+  }
+  useEffect(() => () => { voiceActiveRef.current = false; if (restartTimerRef.current) clearTimeout(restartTimerRef.current); ++speechGenerationRef.current; try { recognitionRef.current?.abort(); } catch {} try { window.speechSynthesis?.cancel(); } catch {} }, []);
+
   return (
-    <section className="jobs-section section-padding">
-      <div className="jobs-layout">
-        <div className="jobs-intro">
-          <span className="section-kicker">DISCOVER YOUR FUTURE</span>
-          <h2>
-            Great opportunities{" "}
-            <span className="gradient-text">start here.</span>
-          </h2>
-          <p>
-            Search by role, technology, or skills. Our AI search
-            engine understands what you're looking for.
-          </p>
-          <div className="jobs-benefits">
-            <span>
-              <CheckCircle2 size={17} /> Skill-based job discovery
-            </span>
-            <span>
-              <CheckCircle2 size={17} /> AI semantic matching
-            </span>
-            <span>
-              <CheckCircle2 size={17} /> Relevant application links
-            </span>
-          </div>
+    <section className="jobs-section section-padding cn-jobs cn-discovery">
+      <div className="cn-discovery-hero">
+        <div><span className="section-kicker">CAREERNOVA / JOB DISCOVERY</span>
+          <h1>Find your next <span className="gradient-text">opportunity.</span></h1>
+          <p>Search 99,999 stored job records or switch to connected live feeds. Review employer listings before applying.</p>
+          <div className="cn-discovery-metrics"><span><strong>{availableTotal.toLocaleString()}</strong> {jobSource === "historical" ? "stored records" : "jobs indexed"}</span><span><strong>{Object.keys(sources).length}</strong> {jobSource === "historical" ? "dataset" : "connected feeds"}</span><span><strong>{total.toLocaleString()}</strong> matches</span></div>
         </div>
-        <form className="search-panel" onSubmit={handleSearch}>
-          <div className="panel-heading">
-            <Sparkles size={22} /> AI Career Search
-          </div>
-          <label htmlFor="job-query">
-            What kind of role are you looking for?
-          </label>
-          <div className="search-input-wrap">
-            <Search size={19} />
-            <input
-              id="job-query"
-              placeholder="e.g. Data Analyst with Python and SQL"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-            />
-          </div>
-          <VoiceInput onTranscript={handleVoiceTranscript} disabled={loading} />
-          <p className="panel-note">After searching, say “select the first job” or “apply for the second job”.</p>
-          {voiceMessage && <p role="status" style={{ color: "#b79aff" }}>{voiceMessage}</p>}
-          <button
-            className="primary-button search-button"
-            type="submit"
-            disabled={loading}
-          >
-            {loading ? "Searching..." : "Find Matching Jobs"}
-            <ArrowRight size={18} />
-          </button>
-          <p className="panel-note">
-            Search job postings using FAISS semantic matching.
-          </p>
-          {error && (
-            <p role="alert" style={{ color: "#ff9aa8" }}>
-              {error}
-            </p>
-          )}
-          {searched && !loading && !error && (
-            <p className="panel-note">
-              {results.length} result(s) shown
-            </p>
-          )}
-        </form>
+        <div className="cn-nova-panel">
+          <div className="cn-nova-title"><Bot size={24}/> <div><strong>Hey Nova</strong><small>Hands-free career assistant</small></div><span className={voiceActive ? "cn-nova-indicator active" : "cn-nova-indicator"}/></div>
+          <p className="cn-nova-voice-status" role="status">{voiceStatus}</p>
+          <div className="cn-nova-actions"><button type="button" className="primary-button" onClick={voiceActive ? stopNova : startNova}>{voiceActive ? "Stop Nova" : "Start Nova"}</button></div>
+          <small>Say “Hey Nova” to activate. Try “Find data analyst internships”, “Read the top jobs”, “Apply for the first job”, “Save this job”, or “Open dashboard”.</small>
+          <form onSubmit={event => { event.preventDefault(); if (!manualNovaCommand.trim()) return; novaAwakeRef.current = true; voiceHandlerRef.current?.(manualNovaCommand); setManualNovaCommand(""); }} style={{display:"flex",gap:8,marginTop:12}}>
+            <input aria-label="Type a command for Nova" placeholder="Type a Nova command to test" value={manualNovaCommand} onChange={event=>setManualNovaCommand(event.target.value)} style={{minWidth:0,flex:1,padding:10,borderRadius:10,background:"#151428",color:"white",border:"1px solid #554b70"}} />
+            <button className="secondary-button" type="submit">Send</button>
+          </form>
+          {voiceConversation.length > 0 && <div className="cn-nova-transcript" aria-live="polite">{voiceConversation.slice(-4).map((line, index) => <p key={index}><strong>{line.who}:</strong> {line.text}</p>)}</div>}
+        </div>
       </div>
-      {assistantJob && (
-        <ApplicationVoiceAssistant
-          job={assistantJob}
-          onClose={() => setAssistantJob(null)}
-        />
-      )}
-      {selectedJob && (
-        <div role="dialog" aria-modal="true" aria-label="Selected job application options"
-          onKeyDown={(event) => { if (event.key === "Escape") setSelectedJob(null); }}
-          style={{ position: "fixed", inset: 0, zIndex: 1000, background: "#000b",
-            display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-          <div style={{ background: "#191726", border: "1px solid #54496b", borderRadius: 18,
-            padding: 28, maxWidth: 560, width: "100%", maxHeight: "90vh", overflowY: "auto" }}>
-            <button type="button" className="secondary-button" style={{ float: "right" }}
-              onClick={() => setSelectedJob(null)} aria-label="Close selected job">✕</button>
-            <h2 style={{ marginTop: 8 }}>{selectedJob.title || "Untitled position"}</h2>
-            <p>{selectedJob.company || "Company not listed"} • {selectedJob.location || "Location not listed"}</p>
-            <p>Choose how you want to continue your application.</p>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 20 }}>
-              {typeof selectedJob.apply_url === "string" && /^https?:\/\//i.test(selectedJob.apply_url) ? (
-                <a className="primary-button" href={selectedJob.apply_url} target="_blank"
-                  rel="noopener noreferrer" style={{ textDecoration: "none" }}>
-                  Apply Manually <ArrowUpRight size={16} />
-                </a>
-              ) : <p>No valid application URL is available for this job.</p>}
-              <button type="button" className="secondary-button"
-                disabled={agentLoading || !/^https?:\/\//i.test(selectedJob.apply_url || "")}
-                onClick={launchApplicationAssistant}>
-                {agentLoading ? "Launching Assistant..." : "Apply with AI Assistant"}
-              </button>
-            </div>
-            {agentMessage && <p role="status" style={{ marginTop: 14, color: "#c4b5fd", overflowWrap: "anywhere" }}>{agentMessage}</p>}
-            <p style={{ fontSize: 13, color: "#b8b2ca", marginTop: 16 }}>
-              AI assistance will require your review and confirmation before submission.
-            </p>
-          </div>
-        </div>
-      )}
-      <div className="recommendation-toolbar" aria-label="Job recommendation filters">
-        <div>
-          <span className="section-kicker">YOUR JOB DISCOVERY</span>
-          <h2>{recommendationMode === "personalized" ? "Recommended for your skills" : "Explore recommended opportunities"}</h2>
-          <p>Browse available postings or personalize suggestions using your saved profile.</p>
-        </div>
-        <button type="button" className="secondary-button" disabled={loading} onClick={personalizeJobs}>
-          <Sparkles size={17}/> {loading ? "Matching..." : "Match My Profile"}
-        </button>
+      <div role="group" aria-label="Job source" style={{display:"flex",gap:10,flexWrap:"wrap",margin:"18px 0"}}>
+        <button type="button" className={jobSource === "historical" ? "primary-button" : "secondary-button"} aria-pressed={jobSource === "historical"} onClick={() => changeJobSource("historical")}>99,999 Dataset Jobs</button>
+        <button type="button" className={jobSource === "live" ? "primary-button" : "secondary-button"} aria-pressed={jobSource === "live"} onClick={() => changeJobSource("live")}>Live Jobs</button>
       </div>
-      <div className="job-category-filters" aria-label="Filter by job category">
-        {categories.map((category) => (
-          <button key={category} type="button" className={jobCategory === category ? "job-category active" : "job-category"}
-            aria-pressed={jobCategory === category} onClick={() => setJobCategory(category)}>{category}</button>
-        ))}
+      {jobSource === "historical" && <p style={{marginBottom:16,opacity:0.8}}>Dataset records are historical and have not been checked for current availability. Always verify the posting on the employer website.</p>}
+      <form className="cn-discovery-search" onSubmit={event => { event.preventDefault(); updateFilters({ term: query }); }}>
+        <Search size={20}/><input aria-label="Search job title, skills or company" placeholder="Job title, skills, or company" value={query} onChange={event => setQuery(event.target.value)}/>
+        <button type="submit" className="primary-button">Search Jobs <ArrowRight size={17}/></button>
+      </form>
+      <div className="cn-discovery-toolbar"><div><strong>{jobSource === "historical" ? "Stored job dataset" : "Live opportunities"}</strong><p>Use the filters to narrow the results.</p></div><div className="cn-discovery-actions">
+        <button type="button" className="secondary-button" disabled={loading} onClick={() => loadJobs({ refresh: true })}><RefreshCw size={17}/> {jobSource === "historical" ? "Reload records" : "Refresh jobs"}</button>
+        <button type="button" className="secondary-button" disabled={loading} onClick={personalizeJobs}><Sparkles size={17}/> Match my profile</button>
+      </div></div>
+      <div className="cn-discovery-filters">
+        <label>Employment type<select value={employmentType} onChange={event => updateFilters({ type: event.target.value })}>{employmentOptions.map(type => <option key={type} value={type}>{type ? type.charAt(0).toUpperCase() + type.slice(1) : "All employment types"}</option>)}</select></label>
+        <label>Work arrangement<select value={workArrangement} onChange={event => updateFilters({ mode: event.target.value })}><option value="">Any arrangement</option><option value="remote">Remote</option><option value="hybrid">Hybrid</option><option value="on-site">On-site</option></select></label>
+        <label>Career field<select value={role} onChange={event => updateFilters({ field: event.target.value })}>{roleOptions.map(field => <option key={field} value={field}>{field || "All career fields"}</option>)}</select></label>
+        <label>Location<input value={location} placeholder="e.g. Houston" onChange={event => setLocation(event.target.value)} onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); updateFilters({ city: location }); } }}/></label>
+        <button type="button" className="secondary-button" onClick={() => { setAdvanced(advancedDefaults); updateFilters({ term: "", type: "", mode: "", field: "", city: "", advancedFilters:advancedDefaults }); }}>Clear filters</button>
       </div>
-      {recommendedLoading && <p className="recommendation-status">Loading recommended jobs...</p>}
-      {recommendedError && <p role="alert" className="recommendation-status">{recommendedError}</p>}
-      {searched && (
-        <div
-          className="search-results"
-          style={{ maxWidth: 1200, margin: "40px auto 0" }}
-        >
-          <h3 style={{ marginBottom: 20 }}>{recommendationMode === "personalized" ? "Personalized Matches" : "Available Jobs"} ({visibleJobs.length})</h3>
-          {loading && <p>Finding your best AI matches...</p>}
-          {!loading && !error && results.length === 0 && (
-            <p>No matching jobs found. Try another search.</p>
-          )}
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns:
-                "repeat(auto-fit, minmax(min(100%, 300px), 1fr))",
-              gap: 18,
-            }}
-          >
-            {visibleJobs.map((job, index) => {
-              const score = Number(job.faiss_score);
-              const validScore = Number.isFinite(score);
-              const validUrl =
-                typeof job.apply_url === "string" &&
-                /^https?:\/\//i.test(job.apply_url);
-              return (
-                <article
-                  key={job.id || index}
-                  style={{
-                    padding: 24,
-                    border: "1px solid #39354d",
-                    borderRadius: 16,
-                    background: "#141320",
-                  }}
-                >
-                  <h3>{job.title || "Untitled position"}</h3>
-                  <p>{job.company || "Company not listed"}</p>
-                  <p>
-                    <MapPin
-                      size={15}
-                      style={{ verticalAlign: "middle" }}
-                    />{" "}
-                    {job.location || "Location not listed"}
-                  </p>
-                  <p>
-                    {job.work_mode || ""}
-                    {job.employment_type
-                      ? ` • ${job.employment_type}`
-                      : ""}
-                  </p>
-                  {validScore && (
-                    <p style={{ color: "#b79aff" }}>
-                      Similarity score: {score.toFixed(3)}
-                    </p>
-                  )}
-                  {validUrl && (
-                    <a
-                      href={job.apply_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="primary-button"
-                      style={{
-                        display: "inline-flex",
-                        marginTop: 12,
-                        textDecoration: "none",
-                      }}
-                    >
-                      Apply Now <ArrowUpRight size={16} />
-                    </a>
-                  )}
-                  <button type="button" className="secondary-button"
-                    style={{ marginTop: 12, marginLeft: 8 }} onClick={() => selectJob(job)}>
-                    Select Job
-                  </button>
-                  <SaveJobButton job={job} />
-                </article>
-              );
-            })}
-          </div>
+      <details className="cn-advanced-filters" open>
+        <summary>More filters & sorting</summary>
+        <div className="cn-discovery-filters">
+          <label>Company<input maxLength={200} value={advanced.company} placeholder="Company name" onChange={e=>setAdvanced({...advanced,company:e.target.value})}/></label>
+          <label>Required keywords<input maxLength={500} value={advanced.skills} placeholder="Python, SQL (all required)" onChange={e=>setAdvanced({...advanced,skills:e.target.value})}/></label>
+          <label>Exclude keywords<input maxLength={500} value={advanced.exclude} placeholder="Unwanted terms, comma separated" onChange={e=>setAdvanced({...advanced,exclude:e.target.value})}/></label>
+          <label>Seniority in job title<select value={advanced.seniority} onChange={e=>updateAdvanced({seniority:e.target.value})}><option value="">Any seniority</option><option value="entry">Entry / junior / internship</option><option value="senior">Senior</option><option value="lead">Lead / staff / management</option></select></label>
+          <label>Posting age<select value={advanced.posted_days} onChange={e=>updateAdvanced({posted_days:Number(e.target.value)})}><option value={0}>Any date</option><option value={1}>Last 24 hours</option><option value={3}>Last 3 days</option><option value={7}>Last 7 days</option><option value={30}>Last 30 days</option></select></label>
+          <label>Sort by<select value={advanced.sort} onChange={e=>updateAdvanced({sort:e.target.value})}><option value="relevance">Default order</option><option value="newest">Newest first</option><option value="title">Job title A–Z</option><option value="company">Company A–Z</option></select></label>
+          <button type="button" className="primary-button" disabled={loading} onClick={()=>loadJobs()}>Apply filters</button>
         </div>
-      )}
+        <p>Required and excluded keywords search listing text. Seniority uses title keywords. Date filters exclude listings without a published date; historical records may have none.</p>
+      </details>
+      <SavedSearchControls activeSearchId={savedSearchId || ""} filters={{source:jobSource,term:searchTerm,type:employmentType,mode:workArrangement,city:location,field:role,...advanced}} onApply={applySavedFilters}/>
+      <div ref={resultsRef} className="cn-discovery-count" style={{ scrollMarginTop: 110 }}><strong>{total.toLocaleString()} matching jobs</strong>{profileMode && <span>Based on your profile skills (first 100 shown)</span>}{loading && <span>Loading…</span>}</div>
+      {error && <p role="alert" className="cn-discovery-error">{error}</p>}
+      {!loading && jobs.length === 0 && !error && <p>No jobs matched. Try clearing some filters. Some employers do not publish employment type or work arrangement.</p>}
+      <div className="cn-discovery-grid">
+        {jobs.map((job, index) => <article className="cn-discovery-card" key={`${job.id}-${index}`}>
+          <div className="cn-job-top"><span className="cn-company-avatar">{String(job.company || "?").slice(0,1).toUpperCase()}</span><span className="cn-source">{jobSource === "historical" ? "Historical · Unverified" : job.source_slug}</span></div>
+          {job.duplicate_count>1 && <p className="job-duplicate-hint">Combined {job.duplicate_count} source listings for this posting.</p>}
+          {job.possible_duplicate_count>0 && <p className="job-duplicate-hint">Similar roles appear in this feed. Check each posting’s requirements.</p>}
+          <h3>{job.title || "Untitled position"}</h3><p className="cn-discovery-company">{job.company || "Company not listed"}</p>
+          <div className="cn-discovery-tags"><span><MapPin size={14}/> {job.location || "Not specified"}</span><span>{job.employment_type || "Type not specified"}</span>{job.work_mode !== "Not specified" && <span>{job.work_mode}</span>}</div>
+          <div className="cn-discovery-card-actions"><button type="button" className="primary-button" onClick={() => setSelectedJob(job)}>Apply with Nova <ArrowRight size={16}/></button><SaveJobButton job={job}/></div>
+        </article>)}
+      </div>
+      {!profileMode && jobs.length < total && <div className="cn-load-more"><button type="button" className="secondary-button" disabled={loading} onClick={() => loadJobs({ requestedPage: page + 1, append: true })}>{loading ? "Loading…" : `Load more (${jobs.length} of ${total})`}</button></div>}
+      {sessionStorage.getItem("careernova-pending-application") && !assistantJob && <div style={{margin:"16px 0",padding:16,border:"1px solid #7465b7",borderRadius:12}}><strong>Application waiting for your profile</strong><p>After saving your Candidate Profile, continue the selected application here.</p><button type="button" className="primary-button" onClick={() => { try { beginNovaApplication(JSON.parse(sessionStorage.getItem("careernova-pending-application"))); } catch { say("Please select a job again."); } }}>Continue application</button></div>}
+      {assistantJob && <ApplicationVoiceAssistant job={assistantJob} onClose={() => setAssistantJob(null)}/>}
+      {selectedJob && <div className="cn-apply-overlay" role="dialog" aria-modal="true" aria-label="Apply for selected job"><div className="cn-apply-dialog">
+        <button type="button" className="cn-close-dialog" onClick={() => setSelectedJob(null)} aria-label="Close"><X size={20}/></button>
+        <h2>{selectedJob.title}</h2><p>{selectedJob.company} · {selectedJob.location}</p><JobPreparation key={selectedJob.id} job={selectedJob}/><p>Nova can assist with supported application forms. Review and confirm before final submission.</p>
+        <div className="cn-discovery-actions"><button type="button" className="primary-button" onClick={() => { setAssistantJob(selectedJob); setSelectedJob(null); }}>Start application assistant</button><Link className="secondary-button" to="/resumes" state={{job_title:selectedJob.title,job_description:selectedJob.description||''}}>Prepare resume for this job</Link><Link className="secondary-button" to="/interview" state={{job_title:selectedJob.title,job_description:selectedJob.description||''}}>Practise an interview</Link>
+        {/^https?:\/\//i.test(selectedJob.apply_url || "") && <a className="secondary-button" href={selectedJob.apply_url} target="_blank" rel="noopener noreferrer">Open job posting <ArrowUpRight size={16}/></a>}</div>
+      </div></div>}
     </section>
   );
 }
+
 function FeaturePage({ title, description, icon: Icon, children }) {
   return (
     <section
@@ -777,22 +1088,27 @@ function FeaturePage({ title, description, icon: Icon, children }) {
   );
 }
 function ResumePage() {
+  const location = useLocation();
+  const savedResumeId = new URLSearchParams(location.search).get("resume_id");
   const [file, setFile] = useState(null);
+  const [assistantJob, setAssistantJob] = useState(null);
+  const [matchedResumeFile, setMatchedResumeFile] = useState(null);
+  const [matchedResumeId, setMatchedResumeId] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [results, setResults] = useState([]);
   const [searched, setSearched] = useState(false);
   async function handleResumeMatch(event) {
     event.preventDefault();
-    if (!file) {
+    if (!file && !savedResumeId) {
       setError("Please select a PDF or DOCX resume.");
       return;
     }
-    if (!/\.(pdf|docx)$/i.test(file.name)) {
+    if (file && !/\.(pdf|docx)$/i.test(file.name)) {
       setError("Only PDF and DOCX files are supported.");
       return;
     }
-    if (file.size > 5 * 1024 * 1024) {
+    if (file && file.size > 5 * 1024 * 1024) {
       setError("Your resume must be 5 MB or smaller.");
       return;
     }
@@ -802,16 +1118,18 @@ function ResumePage() {
     setSearched(false);
     try {
       const formData = new FormData();
-      formData.append("file", file);
-      const response = await fetch(`${API_URL}/api/resume-match?limit=20`, {
+      if (file) formData.append("file", file);
+      const response = await apiFetch(file ? `${API_URL}/api/resume-match?limit=20` : `${API_URL}/api/resumes/${encodeURIComponent(savedResumeId)}/matches`, {
         method: "POST",
-        body: formData,
+        body: file ? formData : undefined,
       });
       const data = await response.json();
       if (!response.ok) {
         throw new Error(typeof data.detail === "string" ? data.detail : `Resume matching failed (HTTP ${response.status})`);
       }
       setResults(Array.isArray(data.jobs) ? data.jobs : []);
+      setMatchedResumeFile(file);
+      setMatchedResumeId(file ? '' : savedResumeId || '');
       setSearched(true);
       requestAnimationFrame(() => {
         document.getElementById("resume-results")?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -828,8 +1146,9 @@ function ResumePage() {
       description="Upload your resume and discover jobs that match your skills and experience."
       icon={FileText}
     >
-      <form className="search-panel" onSubmit={handleResumeMatch} style={{ maxWidth: 650, margin: "auto" }}>
-        <div className="panel-heading"><FileText size={22} /> Upload Your Resume</div>
+      <p className="resume-library-link"><Link className="secondary-button" to="/resumes">Manage resume versions, coaching & match explanations →</Link></p>
+      <form className="search-panel cn-search-panel" onSubmit={handleResumeMatch} style={{ maxWidth: 650, margin: "auto" }}>
+        <div className="panel-heading cn-panel-heading"><FileText size={22} /> Upload Your Resume</div>
         <label htmlFor="resume-file">Select a PDF or DOCX file (maximum 5 MB)</label>
         <input
           id="resume-file"
@@ -841,23 +1160,26 @@ function ResumePage() {
           }}
           style={{ margin: "20px 0" }}
         />
+        {savedResumeId && !file && <p>Using saved resume version #{savedResumeId}. Select a file to use a different resume.</p>}
         {file && <p>Selected: {file.name}</p>}
-        <button className="primary-button search-button" type="submit" disabled={loading}>
-          {loading ? "Analyzing Resume..." : "Find Matching Jobs"}
+        <button className="primary-button search-button cn-search-button" type="submit" disabled={loading}>
+          {loading ? "Analyzing Resume..." : "Find Resume Matches"}
           <ArrowRight size={18} />
         </button>
         {error && <p role="alert" style={{ color: "#ff9aa8", marginTop: 12 }}>{error}</p>}
         <p className="panel-note">Your resume is analyzed to search for semantically relevant job postings.</p>
       </form>
       {searched && (
-        <div id="resume-results" className="search-results" style={{ maxWidth: 1200, margin: "40px auto 0", scrollMarginTop: 100 }}>
+        <div id="resume-results" className="search-results cn-results" style={{ maxWidth: 1200, margin: "40px auto 0", scrollMarginTop: 100 }}>
           <h3 style={{ marginBottom: 20 }}>Resume Matches ({results.length})</h3>
+          <p>Choose Apply with AI to fill supported saved Candidate Profile details, then answer missing questions by voice or typing. Keep the employer browser open. Review each voice answer before confirming; final submission is yours.</p>
           {results.length === 0 && <p>No matching jobs found. Try another resume.</p>}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 300px), 1fr))", gap: 18 }}>
             {results.map((job, index) => {
               const score = Number(job.faiss_score);
               const validScore = job.faiss_score != null && Number.isFinite(score);
-              const validUrl = typeof job.apply_url === "string" && /^https?:\/\//i.test(job.apply_url);
+              const assistedJob = applicationJob(job);
+              const validUrl = Boolean(assistedJob);
               const percentage = job.match_percentage == null ? null : Number(job.match_percentage);
               const hasPercentage = percentage !== null && Number.isFinite(percentage);
               const safePercentage = hasPercentage ? Math.max(0, Math.min(100, percentage)) : null;
@@ -867,6 +1189,7 @@ function ResumePage() {
               const missingSkills = Array.isArray(job.missing_skills) ? job.missing_skills : [];
               return (
                 <article key={job.id || index} style={{ padding: 24, border: "1px solid #39354d", borderRadius: 16, background: "#141320" }}>
+                  <div className="cn-job-top"><div className="cn-company-avatar">{String(job.company || "?").slice(0,1).toUpperCase()}</div><span className="cn-source"><span className="cn-live-dot"/> Historical dataset · {job.source_slug || "Dataset"}</span></div>
                   <h3>{job.title || "Untitled position"}</h3>
                   <p>{job.company || "Company not listed"}</p>
                   <p><MapPin size={15} style={{ verticalAlign: "middle" }} /> {job.location || "Location not listed"}</p>
@@ -906,11 +1229,10 @@ function ResumePage() {
                   )}
                   {!hasPercentage && <p style={{ color: "#a6a0b8", fontSize: 13 }}>Match percentage unavailable for this job.</p>}
                   {validScore && <p style={{ color: "#b79aff", fontSize: 13 }}>FAISS similarity: {score.toFixed(3)}</p>}
-                  {validUrl && (
-                    <a href={job.apply_url} target="_blank" rel="noopener noreferrer" className="primary-button" style={{ display: "inline-flex", marginTop: 12, textDecoration: "none" }}>
-                      Apply Now <ArrowUpRight size={16} />
-                    </a>
-                  )}
+                  {validUrl ? <div style={{display:'flex',gap:10,flexWrap:'wrap',marginTop:16}}>
+                    <button type="button" className="primary-button" onClick={()=>setAssistantJob(assistedJob)}>Apply with AI <Bot size={16}/></button>
+                    <a href={assistedJob.apply_url} target="_blank" rel="noopener noreferrer" className="secondary-button" style={{display:'inline-flex',alignItems:'center',gap:8}}>Open job posting <ArrowUpRight size={16}/></a>
+                  </div> : <p>Application link unavailable for this record. Search for the opening on the employer’s website.</p>}
                   <SaveJobButton job={job} />
                 </article>
               );
@@ -918,143 +1240,12 @@ function ResumePage() {
           </div>
         </div>
       )}
+      {assistantJob&&<ApplicationVoiceAssistant job={assistantJob} initialResumeFile={matchedResumeFile} initialResumeId={matchedResumeId} onClose={()=>setAssistantJob(null)}/>}
     </FeaturePage>
   );
 }
-function AlertsPage() {
-  const initialForm = {
-    full_name: "",
-    email: "",
-    phone: "",
-    desired_job_role: "",
-    preferred_location: "",
-    employment_type: "Full-time",
-    notification_channel: "email",
-    consent_given: false,
-  };
-  const [form, setForm] = useState(initialForm);
-  const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
-  function updateField(event) {
-    const { name, value, type, checked } = event.target;
-    setForm((previous) => ({
-      ...previous,
-      [name]: type === "checkbox" ? checked : value,
-    }));
-  }
-  async function handleSubmit(event) {
-    event.preventDefault();
-    if (loading) return;
-    setMessage("");
-    setError("");
-    if (!form.consent_given) {
-      setError("Please agree to receive job notifications.");
-      return;
-    }
-    if (["sms", "both"].includes(form.notification_channel) && !form.phone.trim()) {
-      setError("A phone number is required for SMS notifications.");
-      return;
-    }
-    setLoading(true);
-    try {
-      const response = await fetch(`${API_URL}/api/job-alerts/register`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...form,
-          full_name: form.full_name.trim(),
-          email: form.email.trim(),
-          phone: form.phone.trim() || null,
-          desired_job_role: form.desired_job_role.trim(),
-          preferred_location: form.preferred_location.trim(),
-        }),
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        const details = Array.isArray(data.detail)
-          ? data.detail.map((item) => item.msg).join("; ")
-          : data.detail;
-        throw new Error(typeof details === "string" ? details : `Registration failed (HTTP ${response.status})`);
-      }
-      setMessage(`Your preferences were saved! Subscription ID: ${data.subscription_id}. Notifications are not active yet; contact verification and delivery will be added next.`);
-      setForm({ ...initialForm });
-    } catch (err) {
-      setError(err.message || "Unable to register. Please try again.");
-    } finally {
-      setLoading(false);
-    }
-  }
-  const fieldStyle = {
-    display: "block",
-    width: "100%",
-    padding: "14px",
-    marginTop: 8,
-    marginBottom: 20,
-    borderRadius: 10,
-    border: "1px solid #39354d",
-    background: "#141320",
-    color: "#ffffff",
-    fontSize: 15,
-    boxSizing: "border-box",
-  };
-  return (
-    <FeaturePage
-      title="Smart Job Alerts"
-      description="Save your job preferences and choose how to receive future matching job notifications."
-      icon={Bell}
-    >
-      <form className="search-panel" style={{ maxWidth: 700, margin: "auto" }} onSubmit={handleSubmit}>
-        <div className="panel-heading"><Bell size={22} /> Create Job Alerts</div>
-        <label htmlFor="alert-name">Full Name</label>
-        <input id="alert-name" name="full_name" value={form.full_name} onChange={updateField}
-          placeholder="Your full name" minLength={2} maxLength={150} required style={fieldStyle} />
-        <label htmlFor="alert-email">Gmail / Email Address</label>
-        <input id="alert-email" name="email" type="email" value={form.email} onChange={updateField}
-          placeholder="example\@gmail.com" maxLength={255} required style={fieldStyle} />
-        <label htmlFor="alert-phone">Phone Number (required for SMS)</label>
-        <input id="alert-phone" name="phone" type="tel" value={form.phone} onChange={updateField}
-          placeholder="+1 555 123 4567" maxLength={30}
-          required={["sms", "both"].includes(form.notification_channel)} style={fieldStyle} />
-        <label htmlFor="alert-role">Type of Job You're Looking For</label>
-        <input id="alert-role" name="desired_job_role" value={form.desired_job_role} onChange={updateField}
-          placeholder="Data Analyst, Data Engineer, AI Engineer" minLength={2} maxLength={255} required style={fieldStyle} />
-        <label htmlFor="alert-location">Preferred Job Location</label>
-        <input id="alert-location" name="preferred_location" value={form.preferred_location} onChange={updateField}
-          placeholder="Houston, TX / Remote" minLength={2} maxLength={255} required style={fieldStyle} />
-        <label htmlFor="alert-employment">Employment Type</label>
-        <select id="alert-employment" name="employment_type" value={form.employment_type}
-          onChange={updateField} style={fieldStyle}>
-          <option value="Full-time">Full-time</option>
-          <option value="Part-time">Part-time</option>
-          <option value="Internship">Internship</option>
-          <option value="Contract">Contract</option>
-        </select>
-        <label htmlFor="alert-channel">Notification Method</label>
-        <select id="alert-channel" name="notification_channel" value={form.notification_channel}
-          onChange={updateField} style={fieldStyle}>
-          <option value="email">Email</option>
-          <option value="sms">SMS Text Message</option>
-          <option value="both">Email and SMS</option>
-        </select>
-        <label style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 24, lineHeight: 1.6 }}>
-          <input type="checkbox" name="consent_given" checked={form.consent_given}
-            onChange={updateField} required style={{ marginTop: 6 }} />
-          <span>I agree to receive CareerNova AI job alerts through my selected channels. I understand I can unsubscribe from future notifications.</span>
-        </label>
-        <button className="primary-button search-button" type="submit" disabled={loading}>
-          {loading ? "Registering..." : "Create Job Alert"} <ArrowRight size={18} />
-        </button>
-        {message && <p role="status" style={{ color: "#7ee7b0", marginTop: 20 }}>
-          <CheckCircle2 size={17} style={{ verticalAlign: "middle" }} /> {message}
-        </p>}
-        {error && <p role="alert" style={{ color: "#ff9aa8", marginTop: 20 }}>{error}</p>}
-        <p className="panel-note">Registration saves your preferences. Email/SMS verification and automatic notification delivery are not active yet.</p>
-      </form>
-    </FeaturePage>
-  );
-}
-function DashboardPage() {
+function DashboardPage({ savedOnly = false }) {
+  const { accountName } = useAuth();
   const [jobs, setJobs] = useState([]);
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -1066,8 +1257,8 @@ function DashboardPage() {
     setError("");
     try {
       const [jobData, statData] = await Promise.all([
-        dashboardRequest(`/api/dashboard/jobs?user_id=${encodeURIComponent(DASHBOARD_USER)}`),
-        dashboardRequest(`/api/dashboard/stats?user_id=${encodeURIComponent(DASHBOARD_USER)}`),
+        dashboardRequest(`/api/dashboard/jobs`),
+        dashboardRequest(`/api/dashboard/stats`),
       ]);
       setJobs(Array.isArray(jobData) ? jobData : Array.isArray(jobData.jobs) ? jobData.jobs : []);
       setStats(statData);
@@ -1082,7 +1273,7 @@ function DashboardPage() {
     setBusyId(job.id);
     setError("");
     try {
-      await dashboardRequest(`/api/dashboard/jobs/${job.id}?user_id=${encodeURIComponent(DASHBOARD_USER)}`, {
+      await dashboardRequest(`/api/dashboard/jobs/${job.id}`, {
         method: "PATCH",
         body: JSON.stringify({ status, notes: notes[job.id] ?? job.notes ?? "" }),
       });
@@ -1096,7 +1287,7 @@ function DashboardPage() {
     setBusyId(job.id);
     setError("");
     try {
-      await dashboardRequest(`/api/dashboard/jobs/${job.id}?user_id=${encodeURIComponent(DASHBOARD_USER)}`, { method: "DELETE" });
+      await dashboardRequest(`/api/dashboard/jobs/${job.id}`, { method: "DELETE" });
       await refresh();
     } catch (err) { setError(err.message); }
     finally { setBusyId(null); }
@@ -1112,7 +1303,8 @@ function DashboardPage() {
   ];
   const inputStyle = { padding: 12, borderRadius: 10, border: "1px solid #39354d", background: "#141320", color: "white", width: "100%" };
   return (
-    <FeaturePage title="Career Dashboard" description="Track saved jobs, applications, interviews, and your AI match insights." icon={ChartNoAxesCombined}>
+    <FeaturePage title={savedOnly ? "Saved Jobs" : "Career Dashboard"} description="Track saved jobs, applications, interviews, and your AI match insights." icon={ChartNoAxesCombined}>
+      <div className="platform-dashboard-banner"><div><span className="platform-eyebrow">YOUR NEXT CHAPTER</span><h2>Welcome back{accountName ? `, ${accountName.split(" ")[0]}` : ""}.</h2><p>Small steps today. A brighter career tomorrow.</p></div><div className="platform-actions"><Link to="/applications" className="secondary-button">Application board</Link><Link to="/tools" className="primary-button">Open career tools <ArrowUpRight size={18}/></Link></div></div>
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 20 }}>
         <button className="secondary-button" type="button" onClick={refresh} disabled={loading}><RefreshCw size={16} /> Refresh</button>
       </div>
@@ -1129,7 +1321,7 @@ function DashboardPage() {
       {loading && <p>Loading dashboard...</p>}
       {!loading && jobs.length === 0 && <p>No saved jobs yet. Visit AI Job Search or Resume Matching and click Save Job.</p>}
       <div style={{ display: "grid", gap: 18 }}>
-        {jobs.map((job) => (
+        {jobs.filter(job => !savedOnly || job.status === "Saved").map((job) => (
           <article key={job.id} style={{ background: "#141320", border: "1px solid #39354d", borderRadius: 16, padding: 24 }}>
             <h3>{job.job_title || "Untitled position"}</h3>
             <p>{job.company || "Unknown company"} • {job.location || "Location not specified"}</p>
@@ -1155,9 +1347,12 @@ function DashboardPage() {
     </FeaturePage>
   );
 }
+function CareerGuideBot() {
+  const {user} = useAuth();
+  return <NovaChatbot key={user?.id || "guest"}/>;
+}
 function ScrollManager() {
-  const { pathname, hash } = window.location;
-  const [currentPath, setCurrentPath] = useState(pathname);
+  const { pathname, hash } = useLocation();
   useEffect(() => {
     if (hash) {
       const id = hash.substring(1);
@@ -1169,27 +1364,52 @@ function ScrollManager() {
     } else {
       window.scrollTo(0, 0);
     }
-  }, [pathname, hash, currentPath]);
+  }, [pathname, hash]);
   return null;
 }
 function App() {
   return (
+    <AuthProvider>
     <div className="website">
+      <ScrollManager />
       <Header />
       <main>
         <Routes>
           <Route path="/" element={<HomePage />} />
+          <Route element={<ProtectedWorkspace/>}>
           <Route path="/jobs" element={<JobsPage />} />
-          <Route path="/features" element={<FeaturesPage />} />
+
           <Route path="/resume" element={<ResumePage />} />
-          <Route path="/alerts" element={<AlertsPage />} />
+          <Route path="/alerts" element={<AlertCenter />} />
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/profile" element={<CandidateProfilePage />} />
+          <Route path="/saved" element={<DashboardPage savedOnly />} />
+          <Route path="/searches" element={<SavedSearchPage />} />
+          <Route path="/timeline" element={<ApplicationTimeline />} />
+          <Route path="/tools" element={<CareerTools />} />
+          <Route path="/applications" element={<ApplicationBoard />} />
+          <Route path="/resumes" element={<ResumeLibrary />} />
+          <Route path="/interview" element={<InterviewStudio />} />
+          <Route path="/reminders" element={<RemindersPage />} />
+          <Route path="/compare" element={<JobComparison />} />
+          <Route path="/trust" element={<TrustCenter />} />
+          <Route path="/privacy" element={<PrivacyPage />} />
+          <Route path="/verify-email" element={<VerifyEmail />} />
+          <Route path="/admin" element={<AdminPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
+          </Route>
+          <Route path="/features" element={<FeaturesPage />} />
+          <Route path="/forgot-password" element={<AccountRecovery />} />
+          <Route path="/reset-password" element={<AccountRecovery reset />} />
+          <Route path="/login" element={<AuthPage mode="login" />} />
+          <Route path="/register" element={<AuthPage mode="register" />} />
           <Route path="*" element={<HomePage />} />
         </Routes>
       </main>
       <Footer />
+      <CareerGuideBot />
     </div>
+    </AuthProvider>
   );
 }
 export default App;

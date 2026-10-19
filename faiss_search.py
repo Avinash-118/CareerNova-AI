@@ -1,12 +1,12 @@
 
+import os
 from pathlib import Path
 import threading
 
 import faiss
 import pandas as pd
-from sentence_transformers import SentenceTransformer
 
-BASE_DIR = Path(__file__).resolve().parent
+BASE_DIR = Path(os.getenv('JOB_DATA_DIR',str(Path(__file__).resolve().parent)))
 
 INDEX_PATH = BASE_DIR / "jobs_faiss.index"
 METADATA_PATH = BASE_DIR / "jobs_metadata.parquet"
@@ -15,6 +15,18 @@ _lock = threading.Lock()
 _index = None
 _jobs = None
 _model = None
+_model_lock = threading.Lock()
+
+
+def get_embedding_model(local_only=False):
+    """Share the model with website help without loading the job index."""
+    global _model
+    if _model is None:
+        with _model_lock:
+            if _model is None:
+                from sentence_transformers import SentenceTransformer
+                _model = SentenceTransformer("all-MiniLM-L6-v2", local_files_only=local_only)
+    return _model
 
 
 def load_search_engine():
@@ -25,9 +37,12 @@ def load_search_engine():
 
     with _lock:
         if _index is None:
+            if not INDEX_PATH.is_file() or not METADATA_PATH.is_file():
+                from fastapi import HTTPException
+                raise HTTPException(503, 'Resume matching requires the backend job index and metadata. Live job search is available.')
             index = faiss.read_index(str(INDEX_PATH))
             jobs = pd.read_parquet(METADATA_PATH)
-            model = SentenceTransformer("all-MiniLM-L6-v2")
+            model = get_embedding_model()
 
             if index.ntotal != len(jobs):
                 raise ValueError(

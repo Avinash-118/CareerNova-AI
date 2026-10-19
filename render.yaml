@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: careernova-api
+    runtime: docker
+    plan: free
+    region: ohio
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/health
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: FRONTEND_URL
+        value: https://career-nova-ai-one.vercel.app
+      - key: PUBLIC_BASE_URL
+        value: https://career-nova-ai-one.vercel.app
+      - key: CORS_ORIGINS
+        value: https://career-nova-ai-one.vercel.app
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: APPLICATION_ASSISTANT_ENABLED
+        value: "false"
+      - key: CHATBOT_SEMANTIC_ENABLED
+        value: "false"
+      - key: INTERVIEW_SEMANTIC_ENABLED
+        value: "false"
+      - key: RUN_ALERT_WORKER
+        value: "false"

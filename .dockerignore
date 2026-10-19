@@ -1,0 +1,8 @@
+**
+!Dockerfile
+!requirements.txt
+!*.py
+test_*.py
+*_backup.py
+!cloud_entrypoint.py
+# Only code is copied. Secrets, personal resumes and job datasets stay out.

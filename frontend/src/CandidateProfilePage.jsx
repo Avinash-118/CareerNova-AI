@@ -1,10 +1,10 @@
+import { API_URL as API_BASE, apiFetch } from "./api";
 
 import React, { useEffect, useState } from "react";
 
-const API_URL = "http://127.0.0.1:8000";
+const API_URL = API_BASE;
 
 const emptyProfile = {
-  profile_id: "local-candidate",
   first_name: "",
   last_name: "",
   email: "",
@@ -86,19 +86,37 @@ export default function CandidateProfilePage() {
   const [profile, setProfile] = useState(emptyProfile);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [loadAttempt, setLoadAttempt] = useState(0);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [hasSavedProfile, setHasSavedProfile] = useState(false);
+  const [resumeCount, setResumeCount] = useState(null);
+  useEffect(()=>{apiFetch(`${API_URL}/api/resumes`).then(r=>r.ok?r.json():Promise.reject()).then(d=>setResumeCount(d.resumes.length)).catch(()=>setResumeCount(null));},[]);
+  const checklist = [
+    ['Contact details', ['first_name','last_name','email','phone','location'].every(k=>String(profile[k]||'').trim())],
+    ['Skills', Boolean(String(profile.skills||'').trim())],
+    ['Education', Boolean(String(profile.degree||'').trim() && String(profile.university||'').trim())],
+    ['Experience details', Boolean(String(profile.experience_years||'').trim())],
+    ['A saved resume', resumeCount === null ? null : resumeCount > 0],
+  ];
+  const readyCount = checklist.filter(([,ready])=>ready===true).length;
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
   useEffect(() => {
     let active = true;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    setLoading(true); setLoadFailed(false); setError('');
 
     async function loadProfile() {
       try {
-        const response = await fetch(
-          `${API_URL}/api/profile/local-candidate`
+        const response = await apiFetch(
+          `${API_URL}/api/profile/me`,
+          {signal: controller.signal}
         );
 
         if (response.status === 404) {
+          if (active) setHasSavedProfile(false);
           return;
         }
 
@@ -110,12 +128,15 @@ export default function CandidateProfilePage() {
 
         if (active) {
           setProfile({ ...emptyProfile, ...data });
+          setHasSavedProfile(true);
         }
       } catch (err) {
         if (active) {
-          setError(err.message);
+          setLoadFailed(true);
+          setError(err.name === 'AbortError' ? 'Your saved profile could not be loaded within 15 seconds. Check that the backend is running, then retry. Your saved details have not been changed.' : 'Could not load your saved profile. Check the backend connection and retry. Your saved details have not been changed.');
         }
       } finally {
+        clearTimeout(timeout);
         if (active) {
           setLoading(false);
         }
@@ -126,8 +147,10 @@ export default function CandidateProfilePage() {
 
     return () => {
       active = false;
+      clearTimeout(timeout);
+      controller.abort();
     };
-  }, []);
+  }, [loadAttempt]);
 
   function updateField(event) {
     const { name, value } = event.target;
@@ -149,7 +172,7 @@ export default function CandidateProfilePage() {
     setError("");
 
     try {
-      const response = await fetch(`${API_URL}/api/profile/save`, {
+      const response = await apiFetch(`${API_URL}/api/profile/save`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -167,6 +190,7 @@ export default function CandidateProfilePage() {
         throw new Error(validationMessage || "Unable to save profile.");
       }
 
+      setHasSavedProfile(true);
       setMessage("Your candidate profile was saved successfully!");
     } catch (err) {
       setError(err.message);
@@ -207,12 +231,16 @@ export default function CandidateProfilePage() {
 
           <p style={{ color: "#94a3b8", lineHeight: 1.6 }}>
             Save your information once. CareerNova AI can use this
-            profile to help fill job applications in a future step.
+            profile to fill supported fields in the application assistant.
           </p>
         </div>
 
+        {!loading&&!loadFailed&&<p role="status">{hasSavedProfile ? "Your saved profile is loaded. You can review or edit it below." : "No candidate profile is saved for this signed-in account yet."}</p>}
+        {!loading&&!loadFailed&&<section aria-label="Application readiness checklist" style={{padding:20,border:'1px solid #334155',borderRadius:16,marginBottom:24}}><h2>Application readiness</h2><p>{readyCount} of {checklist.length} preparation steps complete. This reflects the form below; save changes before applying.</p><progress value={readyCount} max={checklist.length} aria-label="Profile preparation progress"/><ul>{checklist.map(([label,ready])=><li key={label}>{label}: {ready===null?'Could not check':ready?'Ready':'Add details'}</li>)}</ul><p>Only provide information that applies to you. Optional links and eligibility answers do not affect this checklist.</p><a href="/resumes">Upload or prepare your resume →</a></section>}
         {loading ? (
-          <p>Loading your profile...</p>
+          <p role="status">Loading your saved profile…</p>
+        ) : loadFailed ? (
+          <div role="alert" style={{padding:20,border:'1px solid #ed8796',borderRadius:12}}><p>{error}</p><button type="button" onClick={()=>setLoadAttempt(n=>n+1)}>Retry loading my profile</button></div>
         ) : (
           <form onSubmit={saveProfile}>
             {sections.map((section) => (
@@ -353,9 +381,8 @@ export default function CandidateProfilePage() {
                 color: "#94a3b8",
               }}
             >
-              Local development only. This profile API does not yet
-              have user authentication. Do not deploy it publicly
-              or store sensitive information until security is added.
+              This profile is saved to your signed-in CareerNova account.
+              Resume upload and application access checks are coming next.
             </p>
           </form>
         )}

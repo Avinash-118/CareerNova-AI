@@ -1,0 +1,12 @@
+.job-preparation{margin:22px 0;padding:20px;border:1px solid #70618a;border-radius:16px;text-align:left;overflow-wrap:anywhere}
+.job-preparation h3{margin:12px 0;font-size:20px}.job-preparation p{line-height:1.65}
+.job-preparation label{display:grid;gap:8px;margin:14px 0;font-size:14px}
+.job-preparation select,.job-preparation textarea{font:inherit;width:100%;box-sizing:border-box;padding:12px;background:#151425;color:#f2eefb;border:1px solid #75698e;border-radius:10px}
+.job-preparation textarea{resize:vertical}.job-preparation summary{cursor:pointer;line-height:1.6}
+.preparation-checks article{padding:14px;margin:10px 0;background:#ffffff06;border-radius:10px}
+.preparation-limit{padding:12px;border-left:3px solid #b7a0f5;font-size:13px}
+.decoder-section{padding:12px 0;border-bottom:1px solid #ffffff20}.decoder-section blockquote{white-space:pre-wrap;margin:12px 0;padding:12px;border-left:2px solid #a78bfa;background:#ffffff05;font-size:14px}
+.decoder-section small{display:block;margin-top:8px;opacity:.7}.preparation-skills{margin:18px 0}
+@media(max-width:600px){.job-preparation{padding:14px}.job-preparation button{width:100%}}
+
+.cn-apply-dialog{max-height:90dvh;overflow-y:auto}
