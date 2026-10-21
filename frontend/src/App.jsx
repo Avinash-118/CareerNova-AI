@@ -175,7 +175,7 @@ function Header() {
   const { token, accountName, signOut } = useAuth();
   const navigate = useNavigate();
   return (
-    <header className="navbar">
+    <header className="navbar" onKeyDown={event => { if (event.key === 'Escape') setMenuOpen(false); }}>
       <Link
         className="brand"
         to="/"
@@ -187,7 +187,7 @@ function Header() {
         Career<span className="brand-accent">Nova</span>
         <span className="brand-ai">AI</span>
       </Link>
-      <nav id="main-navigation" aria-label="Main navigation" className={menuOpen ? "nav-links open" : "nav-links"} onKeyDown={event => { if (event.key === 'Escape') setMenuOpen(false); }}>
+      <nav id="main-navigation" aria-label="Main navigation" className={menuOpen ? "nav-links open" : "nav-links"}>
         <NavLink to="/" onClick={() => setMenuOpen(false)}>
           Home
         </NavLink>
