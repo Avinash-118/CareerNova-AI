@@ -284,9 +284,8 @@ async def resume_match(file: UploadFile = File(...), limit: int = Query(20, ge=1
         resume = await run_in_threadpool(extract_resume_text, file.filename or "", content)
     except Exception as exc:
         raise HTTPException(400, "Unable to read resume. Use a text-based PDF or DOCX.") from exc
-    jobs = await run_in_threadpool(semantic_search, resume[:20000], limit)
-    for job in jobs:
-        job.update(calculate_match(resume, str(job.get("description", job.get("job_description", ""))), job.get("faiss_score", 0)))
+    from resume_job_matching import match_resume_jobs
+    jobs = await run_in_threadpool(match_resume_jobs, resume, limit)
     from job_identity import annotate_tracking,deduplicate_jobs
     with engine.connect() as conn:
         jobs=annotate_tracking(deduplicate_jobs(jobs),user['id'],conn)

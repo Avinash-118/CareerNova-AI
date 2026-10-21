@@ -1167,7 +1167,7 @@ function ResumePage() {
           <ArrowRight size={18} />
         </button>
         {error && <p role="alert" style={{ color: "#ff9aa8", marginTop: 12 }}>{error}</p>}
-        <p className="panel-note">Your resume is analyzed to search for semantically relevant job postings.</p>
+        <p className="panel-note">Match against the indexed job collection when available, or live listings using skill and keyword overlap. Scores describe listing overlap, not hiring probability.</p>
       </form>
       {searched && (
         <div id="resume-results" className="search-results cn-results" style={{ maxWidth: 1200, margin: "40px auto 0", scrollMarginTop: 100 }}>
@@ -1189,7 +1189,8 @@ function ResumePage() {
               const missingSkills = Array.isArray(job.missing_skills) ? job.missing_skills : [];
               return (
                 <article key={job.id || index} style={{ padding: 24, border: "1px solid #39354d", borderRadius: 16, background: "#141320" }}>
-                  <div className="cn-job-top"><div className="cn-company-avatar">{String(job.company || "?").slice(0,1).toUpperCase()}</div><span className="cn-source"><span className="cn-live-dot"/> Historical dataset · {job.source_slug || "Dataset"}</span></div>
+                  <div className="cn-job-top"><div className="cn-company-avatar">{String(job.company || "?").slice(0,1).toUpperCase()}</div><span className="cn-source"><span className="cn-live-dot"/> {job.matching_method === 'live_keywords' ? `Live listing · ${job.source || 'Connected feed'}` : `Historical dataset · ${job.source_slug || 'Dataset'}`}</span></div>
+                  {job.matching_method === 'live_keywords' && <p>Skill and keyword match · semantic index unavailable</p>}
                   <h3>{job.title || "Untitled position"}</h3>
                   <p>{job.company || "Company not listed"}</p>
                   <p><MapPin size={15} style={{ verticalAlign: "middle" }} /> {job.location || "Location not listed"}</p>

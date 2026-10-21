@@ -420,13 +420,10 @@ def use_resume_version(session_id:str,data:ResumeVersionRequest,user=Depends(get
 
 @router.post('/resumes/{resume_id}/matches')
 def saved_resume_matches(resume_id:int,user=Depends(get_current_user)):
-    from faiss_search import semantic_search
-    from match_scoring import calculate_match
+    from resume_job_matching import match_resume_jobs
     with db().connect() as conn:
         resume=owned(conn,'resume_versions',resume_id,user)
-    jobs=semantic_search(resume['extracted_text'][:20000],20)
-    for job in jobs:
-        job.update(calculate_match(resume['extracted_text'],str(job.get('description',job.get('job_description',''))),job.get('faiss_score',0)))
+    jobs=match_resume_jobs(resume['extracted_text'],20)
     from job_identity import annotate_tracking,deduplicate_jobs
     with db().connect() as conn:
         jobs=annotate_tracking(deduplicate_jobs(jobs),user['id'],conn)
