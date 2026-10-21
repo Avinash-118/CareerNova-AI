@@ -1,0 +1,63 @@
+/* Shared phone and tablet layout rules, loaded after the page themes. */
+.website, .platform-page, .feature-page, .platform-card,
+.platform-columns > *, .timeline-layout > *, .mock-interview-layout > * {
+  min-width: 0;
+}
+img, video { max-width: 100%; height: auto; }
+input, textarea, select { min-width: 0; }
+input[type=file] { width: 100%; }
+.platform-card, .search-panel, .search-results article { overflow-wrap: anywhere; }
+.table-scroll, .application-board { max-width: 100%; overscroll-behavior-x: contain; }
+
+/* Collapse navigation before its links collide on tablet screens. */
+@media (max-width: 1100px) {
+  .navbar { height: 76px; padding: 0 20px; gap: 12px; }
+  .navbar .brand { margin-right: auto; white-space: nowrap; }
+  .mobile-menu { display: grid; place-items: center; min-width: 44px; min-height: 44px; }
+  .nav-links {
+    display: none; position: absolute; top: 100%; left: 0; right: 0;
+    flex-direction: column; align-items: stretch; gap: 4px;
+    max-height: calc(100dvh - 76px); overflow-y: auto;
+    padding: 12px 20px 20px; background: var(--mission-card, #151521);
+    border-bottom: 1px solid var(--mission-line, #353249);
+    box-shadow: 0 16px 24px #0003;
+  }
+  .nav-links.open { display: flex; }
+  .nav-links a, .nav-links button { min-height: 44px; padding: 12px; }
+  .workspace-nav {
+    flex-wrap: nowrap; overflow-x: auto; max-width: 100%;
+    padding: 10px 16px; scrollbar-width: thin;
+  }
+  .workspace-nav a { flex: 0 0 auto; min-height: 44px; white-space: nowrap; }
+  .platform-columns, .timeline-layout { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 600px) {
+  .navbar { padding-inline: 12px; gap: 8px; }
+  .navbar .brand { font-size: 19px; gap: 4px; }
+  .brand-icon { width: 34px; height: 34px; }
+  .navbar .mission-theme-switch { min-width: 44px; min-height: 44px; padding: 10px; }
+  .platform-page { padding: 28px 16px 72px; }
+  .platform-card, .search-panel { padding: 20px 16px; border-radius: 16px; }
+  .platform-page > h1 { font-size: clamp(28px, 8vw, 38px); }
+  .platform-intro { font-size: 16px; }
+  input:not([type=checkbox]):not([type=radio]), select, textarea { font-size: 16px; }
+  button, .primary-button, .secondary-button { min-height: 44px; }
+  .platform-actions { align-items: stretch; }
+  .platform-actions > *, .saved-search-form > *, .saved-search-restore > * { flex: 1 1 100%; min-width: 0; }
+  .saved-search-panel label, .timeline-filter label { min-width: 0; width: 100%; }
+  .platform-card-heading { flex-wrap: wrap; gap: 12px; }
+  .tool-modal-backdrop { padding: 12px; }
+  .tool-modal { max-height: calc(100dvh - 24px); }
+  .application-board { grid-template-columns: minmax(0, 1fr); overflow-x: visible; }
+  .board-column { min-height: 0; }
+  .footer-top { flex-direction: column; gap: 24px; }
+  .footer-links { flex-wrap: wrap; gap: 16px; }
+  .mission-search { flex-wrap: wrap; }
+  .mission-search input { flex-basis: calc(100% - 40px); width: 0; }
+  .mission-search button { width: 100%; }
+}
+
+@media (pointer: coarse) {
+  input[type=checkbox], input[type=radio] { min-width: 20px; min-height: 20px; }
+}

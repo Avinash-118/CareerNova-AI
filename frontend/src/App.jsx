@@ -9,6 +9,7 @@ import "./Platform.css";
 import "./App.css";
 import "./CareerNovaMission.css";
 import "./CareerNovaDiscovery.css";
+import "./Responsive.css";
 import ApplicationVoiceAssistant from "./ApplicationVoiceAssistant";
 import CandidateProfilePage from "./CandidateProfilePage";
 import VoiceInput from "./VoiceInput";
@@ -186,7 +187,7 @@ function Header() {
         Career<span className="brand-accent">Nova</span>
         <span className="brand-ai">AI</span>
       </Link>
-      <nav className={menuOpen ? "nav-links open" : "nav-links"}>
+      <nav id="main-navigation" aria-label="Main navigation" className={menuOpen ? "nav-links open" : "nav-links"} onKeyDown={event => { if (event.key === 'Escape') setMenuOpen(false); }}>
         <NavLink to="/" onClick={() => setMenuOpen(false)}>
           Home
         </NavLink>
@@ -214,6 +215,8 @@ function Header() {
       <button
         className="mobile-menu"
         aria-label="Toggle navigation"
+        aria-expanded={menuOpen}
+        aria-controls="main-navigation"
         onClick={() => setMenuOpen(!menuOpen)}
       >
         {menuOpen ? <X /> : <Menu />}
