@@ -1,5 +1,5 @@
 import pandas as pd
-from advanced_job_filters import filter_frame
+from advanced_job_filters import filter_frame, json_records
 from typing import Literal
 from auth_routes import get_current_user
 from job_identity import deduplicate_jobs,annotate_tracking
@@ -89,7 +89,7 @@ def discover_jobs(
     )
 
     if filtered:
-        filtered = filter_frame(pd.DataFrame(filtered), company, skills, exclude, seniority, posted_days, sort).to_dict(orient='records')
+        filtered = json_records(filter_frame(pd.DataFrame(filtered), company, skills, exclude, seniority, posted_days, sort))
     start = (page - 1) * limit
 
     return {

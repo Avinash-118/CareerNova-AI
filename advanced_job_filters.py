@@ -3,6 +3,11 @@ import re
 import pandas as pd
 
 
+def json_records(frame):
+    """Keep heterogeneous provider metadata JSON-safe after DataFrame filtering."""
+    return frame.astype(object).where(pd.notna(frame), None).to_dict(orient='records')
+
+
 def filter_frame(frame, company='', skills='', exclude='', seniority='', posted_days=0, sort='relevance'):
     frame = frame.copy()
     def column(name):

@@ -5,6 +5,16 @@ import live_jobs as feeds
 
 
 class FreeFeedsTests(unittest.TestCase):
+    def test_mixed_provider_results_are_valid_json(self):
+        import json
+        import pandas as pd
+        from advanced_job_filters import filter_frame, json_records
+        jobs=[{'title':'Analyst','source':'Himalayas','min_salary':None,'timezone_restrictions':[0]},
+              {'title':'Engineer','source':'Arbeitnow'}]
+        records=json_records(filter_frame(pd.DataFrame(jobs)))
+        json.dumps(records,allow_nan=False)
+        self.assertIsNone(records[1]['timezone_restrictions'])
+
     def setUp(self):
         feeds._source_cache.clear()
 
