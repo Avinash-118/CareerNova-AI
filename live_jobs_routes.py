@@ -44,7 +44,7 @@ def filter_jobs(jobs, query="", employment_type="", location="",
 
         if work_arrangement:
             arrangement = work_arrangement.lower()
-            text = (job["location"] + " " + job["title"]).lower()
+            text = (job["location"] + " " + job["title"] + " " + job.get("work_mode", "")).lower()
             if arrangement in ["remote", "hybrid", "on-site"]:
                 if arrangement not in text:
                     continue

@@ -227,6 +227,7 @@ function Header() {
 function Footer() {
   return (
     <footer className="footer">
+      <p>Job sources: <a href="https://himalayas.app" target="_blank" rel="noopener noreferrer">Himalayas</a> · <a href="https://www.arbeitnow.com" target="_blank" rel="noopener noreferrer">Arbeitnow</a>. Check each employer’s location and eligibility requirements.</p>
       <div className="footer-top">
         <div>
           <Link className="brand" to="/">
@@ -306,7 +307,7 @@ function HomePage() {
         <div className="mission-launchpad"><Link to="/jobs"><span className="launch-icon"><Compass size={22}/></span><span><strong>Explore opportunities</strong><small>One unified live job feed</small></span><ArrowUpRight size={19}/></Link><Link to="/resume"><span className="launch-icon"><Network size={22}/></span><span><strong>Decode your strengths</strong><small>Match your resume with roles</small></span><ArrowUpRight size={19}/></Link><Link to="/profile"><span className="launch-icon"><Bot size={22}/></span><span><strong>Prepare with Nova</strong><small>Build your candidate profile</small></span><ArrowUpRight size={19}/></Link></div>
       </section>
       <section className="nova-discover section-padding cn-discover">
-        <div className="nova-discover-heading"><div><span className="section-kicker">DISCOVER OPPORTUNITIES</span><h2>Fresh opportunities, one place</h2><p>Explore live remote postings from our connected job source.</p></div><Link to="/jobs" className="secondary-button">View all jobs <ArrowRight size={17}/></Link></div>
+        <div className="nova-discover-heading"><div><span className="section-kicker">DISCOVER OPPORTUNITIES</span><h2>Fresh opportunities, one place</h2><p>Explore real job postings from free public feeds.</p></div><Link to="/jobs" className="secondary-button">View all jobs <ArrowRight size={17}/></Link></div>
         <div className="nova-job-grid cn-preview-grid">
           {jobs.length ? jobs.slice(0,3).map((job, index) => (
             <Link to="/jobs" className="nova-job-card cn-preview-card" key={job.id || index}>

@@ -83,3 +83,13 @@ Deployment completed on 2026-10-19: frontend https://career-nova-ai-one.vercel.a
 Cloud limitations: Google/GitHub OAuth is not configured; outgoing email and RUN_ALERT_WORKER remain disabled until a verified HTTPS email provider is configured. Historical FAISS artifacts are not provisioned, semantic feedback models are disabled for memory limits, and the headed application assistant remains local-only. Free Render sleeps when idle. Local accounts and resumes were not migrated. One synthetic deployment-check account remains for verification; it contains no real candidate information.
 
 Additional verification: an isolated Linux container and fresh PostgreSQL 18 passed registration and profile round-trip checks under a 512 MB API memory limit. After the hosted driver fix, four deployment tests and the frontend build passed. A later combined local suite stalled during database integration startup and was stopped; it is not counted as a passing rerun.
+
+## Free public job feeds (2026-10-23)
+
+Default discovery now uses Himalayas (up to five cursor pages, 100 listings) and Arbeitnow (one provider page; currently 300 listings). No API keys or paid services are required. This is a bounded sample, not a complete job market index. Existing search, alerts and live resume matching consume the normalized feed; local FAISS matching remains available when its artifacts are present.
+
+Each provider is cached for 24 hours per Python process; the combined cache lasts 15 minutes. Container restarts clear these in-memory caches. Provider failures are reported independently and do not silently retain old results indefinitely. Himalayas expiry dates are checked on cached reads, applicationLink values are preserved, and source backlinks appear in job cards and the footer. Timezone restrictions are retained in job metadata; candidates must check the original posting for all eligibility requirements. Listings can close before their advertised expiry. Arbeitnow does not supply an expiry date in this integration.
+
+Remotive is excluded from default discovery because its public-feed terms disallow signup-gated access. Existing saved records are preserved. USAJOBS is not enabled because it requires separate registration for a free API key. No paid plan or credential is needed for the two default providers. No resume or candidate data is sent to them. Cloud resume matching continues to use its existing keyword fallback when FAISS artifacts are absent.
+
+Verification: six targeted unit tests passed, frontend production build passed, and a live bounded fetch returned 400 jobs (100 Himalayas, 300 Arbeitnow). This records local implementation checks, not production deployment.

@@ -2,12 +2,79 @@ from job_identity import deduplicate_jobs
 
 import os
 import time
+import threading
 import requests
 from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 CACHE_SECONDS = 900
 _cache = {"time": 0, "jobs": [], "sources": {}}
+_source_cache = {}
+_refresh_lock = threading.Lock()
+
+
+def iso_date(value):
+    try:
+        return datetime.fromtimestamp(float(value), timezone.utc).isoformat()
+    except (TypeError, ValueError, OverflowError, OSError):
+        return str(value or '')
+
+
+def unexpired(job):
+    expiry = job.get('expires_at')
+    if not expiry:
+        return True
+    try:
+        return datetime.fromisoformat(expiry.replace('Z', '+00:00')).timestamp() > time.time()
+    except (ValueError, TypeError):
+        return False
+
+
+def fetch_himalayas():
+    jobs=[]
+    cursor=None
+    seen=set()
+    # Bounded daily sample keeps the free service's memory and API use small.
+    for _ in range(5):
+        params={'limit':20}
+        if cursor:params['cursor']=cursor
+        data=get_json('https://himalayas.app/jobs/api',params)
+        for item in data.get('jobs',[]):
+            link=item.get('applicationLink')
+            if not link:continue
+            job=make_job('Himalayas',item.get('guid') or link,item.get('title'),item.get('companyName'),
+                ', '.join(item.get('locationRestrictions') or []) or 'Worldwide',
+                item.get('employmentType'),item.get('description') or item.get('excerpt'),link,iso_date(item.get('pubDate')))
+            job.update(source_url='https://himalayas.app',work_mode='Remote',expires_at=iso_date(item.get('expiryDate')),
+                timezone_restrictions=item.get('timezoneRestrictions') or [],
+                min_salary=item.get('minSalary'),max_salary=item.get('maxSalary'),salary_currency=item.get('currency'),salary_period=item.get('salaryPeriod'))
+            if unexpired(job):jobs.append(job)
+        cursor=data.get('nextCursor')
+        if not cursor or cursor in seen:break
+        seen.add(cursor)
+    return jobs
+
+
+def fetch_arbeitnow():
+    jobs=[]
+    data=get_json('https://www.arbeitnow.com/api/job-board-api')
+    for item in data.get('data',[]):
+        if not item.get('url'):continue
+        job=make_job('Arbeitnow',item.get('slug') or item['url'],item.get('title'),item.get('company_name'),
+            item.get('location'),', '.join(item.get('job_types') or []) or 'Not specified',
+            item.get('description'),item['url'],iso_date(item.get('created_at')))
+        job.update(source_url='https://www.arbeitnow.com',work_mode='Remote' if item.get('remote') else 'Not specified')
+        jobs.append(job)
+    return jobs
+
+
+def daily_feed(name, fetcher):
+    cached=_source_cache.get(name)
+    if cached and time.time()-cached['time']<86400:
+        return [j for j in cached['jobs'] if unexpired(j)]
+    jobs=fetcher()
+    _source_cache[name]={'time':time.time(),'jobs':jobs}
+    return jobs
 
 
 def get_json(url, params=None):
@@ -105,10 +172,17 @@ def configured_boards(name):
 
 
 def fetch_live_jobs(force_refresh=False):
-    if not force_refresh and time.time() - _cache["time"] < CACHE_SECONDS:
-        return list(_cache["jobs"])
+    with _refresh_lock:
+        return _fetch_live_jobs(force_refresh)
 
-    tasks = [("Remotive", fetch_remotive)]
+
+def _fetch_live_jobs(force_refresh=False):
+    if not force_refresh and time.time() - _cache["time"] < CACHE_SECONDS:
+        return [j for j in _cache['jobs'] if unexpired(j)]
+
+    # Remotive is excluded: its public feed disallows signup-gated listings.
+    tasks = [('Himalayas',lambda:daily_feed('Himalayas',fetch_himalayas)),
+             ('Arbeitnow',lambda:daily_feed('Arbeitnow',fetch_arbeitnow))]
 
     for board in configured_boards("GREENHOUSE_BOARDS"):
         tasks.append((
@@ -143,12 +217,12 @@ def fetch_live_jobs(force_refresh=False):
 
     jobs = deduplicate_jobs(all_jobs)
 
-    if jobs:
-        _cache["jobs"] = jobs
+    # Do not silently retain closed listings indefinitely after a source outage.
+    _cache["jobs"] = jobs
 
     _cache["time"] = time.time()
     _cache["sources"] = status
-    return list(_cache["jobs"])
+    return [j for j in _cache['jobs'] if unexpired(j)]
 
 
 def get_source_status():
