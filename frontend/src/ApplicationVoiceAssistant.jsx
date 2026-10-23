@@ -1,5 +1,6 @@
 import { API_URL as API_BASE, apiFetch } from "./api";
 import { useEffect, useRef, useState } from 'react';
+import HostedApplicationAssistant from './HostedApplicationAssistant';
 
 const API = API_BASE;
 const SpeechRecognitionClass = () => window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -33,7 +34,22 @@ function profileSuggestion(field, profile) {
   return { value, key };
 }
 
-export default function ApplicationVoiceAssistant({ job, onClose, initialResumeFile = null, initialResumeId = '' }) {
+export default function ApplicationVoiceAssistant(props) {
+  const [mode, setMode] = useState('loading');
+  useEffect(() => {
+    let active = true;
+    apiFetch(`${API}/api/agent/capabilities`).then(async r => {
+      if (!r.ok) throw new Error('Unable to check application tools.');
+      const data = await r.json();
+      if (active) setMode(data.desktop_browser ? 'desktop' : 'hosted');
+    }).catch(() => { if (active) setMode('hosted'); });
+    return () => { active = false; };
+  }, []);
+  if (mode === 'desktop') return <DesktopApplicationAssistant {...props}/>;
+  return <HostedApplicationAssistant {...props} loadingMode={mode === 'loading'}/>;
+}
+
+function DesktopApplicationAssistant({ job, onClose, initialResumeFile = null, initialResumeId = '' }) {
   const [session, setSession] = useState(null);
   const [autofillSummary, setAutofillSummary] = useState('');
   const [fillErrors, setFillErrors] = useState([]);

@@ -1,0 +1,18 @@
+const {readFileSync}=require('node:fs');
+const vm=require('node:vm');
+const assert=require('node:assert/strict');
+class Input {
+  constructor(label,type='text',value=''){this.labels=[{textContent:label}];this.type=type;this.tagName='INPUT';this._value=value;this.events=[];}
+  get value(){return this._value;} set value(v){this._value=v;}
+  getClientRects(){return [{}];}
+  getAttribute(){return null;}
+  dispatchEvent(event){this.events.push(event.type);}
+}
+class Textarea extends Input {}
+const fields=[new Input('First name'),new Input('Email','email'),new Input('Phone','tel','keep-existing'),new Input('Sponsorship required'),new Input('Agree','checkbox'),new Input('Password','password'),new Input('Resume','file'),new Input('Full name')];
+const context={document:{querySelectorAll:()=>fields},HTMLInputElement:Input,HTMLTextAreaElement:Textarea,Event:class{constructor(type){this.type=type;}}};
+vm.createContext(context);vm.runInContext(readFileSync('browser_extension/fill.js','utf8'),context);
+const result=context.fillProfile({first_name:'Test',last_name:'Candidate',email:'test@example.com',phone:'123',sponsorship_required:'yes'});
+assert.equal(result.filled,3);assert.equal(fields[0].value,'Test');assert.equal(fields[1].value,'test@example.com');assert.equal(fields[2].value,'keep-existing');assert.equal(fields[3].value,'');assert.equal(fields[4].value,'');assert.equal(fields[5].value,'');assert.equal(fields[6].value,'');assert.equal(fields[7].value,'Test Candidate');assert.deepEqual(fields[0].events,['input','change']);
+assert.equal(context.fillProfile({first_name:'Replacement'}).filled,0);
+console.log('Extension fill checks passed: explicit labels, existing values, excluded choices/secrets/files, input events, repeat fill.');

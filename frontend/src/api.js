@@ -1,9 +1,13 @@
 export const API_URL = import.meta.env.VITE_API_URL || '';
 export async function apiFetch(path, options = {}) {
-  const response = await fetch(path, {
+  let response;
+  try { response = await fetch(path, {
     ...options, credentials: 'include',
     headers: { 'X-CareerNova-Client': 'web', ...options.headers },
-  });
+  }); } catch (error) {
+    if (error.name === 'AbortError') throw error;
+    throw new Error('Connection interrupted. Your change could not be confirmed. Refresh your saved jobs before retrying; the free server may be waking up.');
+  }
   if (response.status === 401 && !/\/api\/auth\//.test(path)) {
     window.dispatchEvent(new Event('careernova-session-expired'));
   }

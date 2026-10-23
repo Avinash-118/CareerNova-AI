@@ -1,0 +1,8 @@
+{
+  "manifest_version": 3,
+  "name": "CareerNova Autofill",
+  "version": "1.0.0",
+  "description": "Fill empty application fields with your imported CareerNova profile on request.",
+  "permissions": ["activeTab", "scripting", "storage"],
+  "action": {"default_popup": "popup.html"}
+}

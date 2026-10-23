@@ -27,6 +27,11 @@ class AnswerRequest(BaseModel):
 class EvidenceRequest(BaseModel):
     resume_id: int | None = None
 
+@application_session_router.get('/capabilities')
+def capabilities(user=Depends(get_current_user)):
+    from deployment_config import browser_assistant_enabled
+    return {'desktop_browser': browser_assistant_enabled()}
+
 @application_session_router.post('/start')
 def start(data: StartRequest, user=Depends(get_current_user)):
     from deployment_config import browser_assistant_enabled
