@@ -3,11 +3,12 @@
 <html>
 <head>
   <title>CareerNova AI Test Application</title>
+  <style>body{font:16px system-ui;max-width:740px;margin:40px auto;padding:20px}label{display:block;margin-top:18px}input,textarea,select{padding:10px;min-width:300px}button{padding:10px;margin:16px 0}.select__control{border:1px solid #888;padding:8px}[role=option]{padding:8px;cursor:pointer;background:#eee}</style>
 </head>
 <body>
   <h1>Sample Job Application</h1>
 
-  <form>
+  <form onsubmit="event.preventDefault();document.getElementById('result').textContent='Local test only — no application sent.'">
     <label for="full_name">Full Name</label>
     <input id="full_name" name="full_name" required>
 
@@ -17,6 +18,9 @@
     <label for="phone">Phone Number</label>
     <input id="phone" name="phone" type="tel">
 
+    <label for="city">Location (City)</label>
+    <div class="select__control"><span class="select__single-value"></span><input id="city" role="combobox" aria-expanded="false" autocomplete="off" oninput="document.getElementById('cities').hidden=false" onclick="document.getElementById('cities').hidden=false"><div id="cities" role="listbox" hidden><div role="option" onclick="document.querySelector('.select__single-value').textContent='Boston';document.getElementById('city').value='';document.getElementById('cities').hidden=true;document.getElementById('city').setAttribute('aria-expanded','false')">Boston</div></div></div>
+
     <label for="experience">Experience</label>
     <select id="experience" name="experience">
       <option>0-1 years</option>
@@ -25,12 +29,14 @@
     </select>
 
     <label for="resume">Upload Resume</label>
-    <input id="resume" name="resume" type="file">
+    <button type="button" onclick="document.getElementById('resume').click()">Attach resume</button>
+    <input id="resume" name="resume" type="file" style="display:none">
 
     <label for="cover_letter">Cover Letter</label>
     <textarea id="cover_letter" name="cover_letter"></textarea>
 
     <button type="submit">Submit</button>
   </form>
+  <p id="result"></p>
 </body>
 </html>

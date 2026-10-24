@@ -14,6 +14,9 @@ def validate_url(url):
         raise ValueError('Invalid application URL')
     # Public portals must not reach private addresses. Local test page is the only exception.
     if parsed.hostname in ('localhost', '127.0.0.1'):
+        from deployment_config import production
+        if not production() and parsed.port == 8000 and parsed.path == '/api/agent/demo-form':
+            return
         if parsed.port != 8765 or parsed.path != '/test_application.html':
             raise ValueError('Only the local sample application is allowed on localhost')
         return
@@ -115,6 +118,18 @@ class ApplicationSession:
         self.field_errors = {}
         self.index = 0
         for i, info in enumerate(self.fields):
+            if info['type'] == 'file':
+                filename = self.field_locators[i].evaluate('(el) => el.files?.[0]?.name || ""')
+                if filename:
+                    self.answers[i] = f'Uploaded: {filename}'
+                    self.answer_sources[i] = 'Existing employer form upload'
+                continue
+            if info.get('role') == 'combobox':
+                selected = self._combo_value(self.field_locators[i])
+                if selected:
+                    self.answers[i] = selected
+                    self.answer_sources[i] = 'Existing employer form selection'
+                continue
             if info['type'] in ('text', 'email', 'tel', 'url', 'number', 'date', 'search') or info['tag'] == 'textarea':
                 try:
                     value = self.field_locators[i].input_value(timeout=2000)
@@ -164,9 +179,13 @@ class ApplicationSession:
             controls = frame.locator('input:not([type=hidden]), textarea, select')
             for i in range(controls.count()):
                 field = controls.nth(i)
-                if not field.is_visible() or not field.is_enabled():
-                    continue
                 kind = (field.get_attribute('type') or 'text').lower()
+                if not field.is_enabled():
+                    continue
+                # Greenhouse hides native file inputs behind its visible Attach button.
+                if not field.is_visible():
+                    if kind != 'file' or not field.evaluate("el => !!el.parentElement?.getClientRects().length"):
+                        continue
                 if kind in ('submit', 'button', 'reset', 'image'):
                     continue
                 # Bind to the element, rather than a shifting position in the form.
@@ -179,10 +198,17 @@ class ApplicationSession:
                       el.getAttribute('aria-label') ||
                       el.parentElement?.querySelector('label')?.innerText?.trim() ||
                       el.getAttribute('placeholder') || el.name || 'Application question',
-                    name: el.name || '', id: el.id || '', autocomplete: el.autocomplete || '',
+                    name: el.name || '', id: el.id || '', autocomplete: el.autocomplete || '', role: el.getAttribute('role') || '',
                     tag: el.tagName.toLowerCase(), required: el.required === true || el.getAttribute('aria-required') === 'true'
                 })""")
                 metadata.update(type=kind, options=field.locator('option').all_text_contents() if metadata['tag'] == 'select' else [])
+                if kind == 'file':
+                    import re
+                    identifiers = [metadata['id'].lower(), metadata['name'].lower()]
+                    if any(re.fullmatch(r'(resume|cv)([_-]file)?', key) for key in identifiers):
+                        metadata['label'] = 'Resume/CV'
+                    elif any(re.fullmatch(r'cover[_-]letter([_-]file)?', key) for key in identifiers):
+                        metadata['label'] = 'Cover Letter'
                 self.fields.append(metadata)
                 self.field_locators.append(stable)
 
@@ -252,12 +278,18 @@ class ApplicationSession:
                 continue
             field = self.field_locators[i]
             try:
+                if info.get('role') == 'combobox' and self._combo_value(field):
+                    self.answers[i] = self._combo_value(field)
+                    self.answer_sources[i] = 'Existing employer form value'
+                    continue
                 existing = field.input_value(timeout=3500)
                 if existing.strip():
                     self.answers[i] = existing
                     self.answer_sources[i] = 'Existing employer form value'
                     continue
-                if info['tag'] == 'select':
+                if info.get('role') == 'combobox':
+                    self._select_custom(field, value)
+                elif info['tag'] == 'select':
                     choices = info.get('options', [])
                     match = next((x for x in choices if x.strip().casefold() == value.casefold()), None)
                     if match is None:
@@ -274,7 +306,7 @@ class ApplicationSession:
                 else:
                     continue
                 field.press('Tab', timeout=3500)
-                actual = field.input_value(timeout=3500)
+                actual = self._combo_value(field) if info.get('role') == 'combobox' else field.input_value(timeout=3500)
                 if info['tag'] != 'select' and actual != value:
                     raise ValueError('The employer form did not retain the entered value')
                 self.field_errors.pop(i, None)
@@ -314,6 +346,36 @@ class ApplicationSession:
     def answer(self, value):
         return self.run(self._answer, value)
 
+    def _combo_value(self, field):
+        return field.evaluate("""el => {
+            const root=el.closest('[class*="select__control"], [class*="-control"]') || el.parentElement?.parentElement;
+            const selected=root?.querySelector('[class*="singleValue"], [class*="single-value"]');
+            return selected?.textContent?.trim() || '';
+        }""")
+
+    def _select_custom(self, field, value):
+        """Commit an exact visible option; typing alone is not a valid selection."""
+        field.click(timeout=3500)
+        if field.get_attribute('readonly') is None:
+            field.fill(value, timeout=3500)
+        for frame in self.page.frames:
+            option = frame.get_by_role('option', name=value, exact=True)
+            try:
+                option.first.wait_for(state='visible', timeout=1500)
+                if option.count() == 1:
+                    option.click(timeout=3500)
+                    # React-select can clear its search input after a selection.
+                    retained = self._combo_value(field) or field.input_value(timeout=2000)
+                    if retained.casefold() != value.strip().casefold():
+                        raise ValueError('The selected option could not be verified. Check the employer browser.')
+                    return
+            except ValueError:
+                raise
+            except Exception:
+                continue
+        field.press('Escape')
+        raise ValueError('No exact option found. Choose an option in the employer browser, then rescan.')
+
     def _answer(self, value):
         if self.index >= len(self.fields):
             raise ValueError('No remaining questions')
@@ -323,7 +385,9 @@ class ApplicationSession:
             raise ValueError('Enter passwords manually in the employer browser')
         if info['type'] == 'file':
             raise ValueError('Use the resume upload control or skip this field')
-        if info['tag'] == 'select':
+        if info.get('role') == 'combobox':
+            self._select_custom(field, value)
+        elif info['tag'] == 'select':
             match = next((x for x in info['options'] if x.strip().casefold() == value.strip().casefold()), None)
             if match is None:
                 raise ValueError('Choose one of the displayed options')
@@ -371,7 +435,10 @@ class ApplicationSession:
         if self.index >= len(self.fields) or self.fields[self.index]['type'] != 'file':
             raise ValueError('Current question is not a file upload')
         self._field().set_input_files({'name': filename, 'mimeType': 'application/pdf' if filename.lower().endswith('.pdf') else 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'buffer': content})
+        if self._field().evaluate('(el) => el.files?.[0]?.name') != filename:
+            raise ValueError('The browser did not retain the uploaded file. Please retry.')
         self.answers[self.index] = f'Uploaded: {filename}'
+        self.answer_sources[self.index] = 'Selected resume file'
         self.index += 1
         self._advance_index()
         return {'next_question': self._question()}

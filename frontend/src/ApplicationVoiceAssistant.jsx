@@ -50,6 +50,7 @@ export default function ApplicationVoiceAssistant(props) {
 }
 
 function DesktopApplicationAssistant({ job, onClose, initialResumeFile = null, initialResumeId = '' }) {
+  const automaticResumeAttempts = useRef(new Set());
   const [session, setSession] = useState(null);
   const [autofillSummary, setAutofillSummary] = useState('');
   const [fillErrors, setFillErrors] = useState([]);
@@ -209,12 +210,25 @@ function DesktopApplicationAssistant({ job, onClose, initialResumeFile = null, i
       setPhase('All questions processed. Ready for review.');
       speak('All detected questions have been processed. Please review your answers before submitting the application yourself.');
     } else if (data.question?.type === 'file') {
+      if (initialResumeId && /resume|\bcv\b/i.test(data.question.label || '')) {
+        setPhase('Preparing your selected saved resume…');
+        return;
+      }
       setPhase('Resume upload requires selecting a file.');
       speak(`Question ${data.question_number}. ${data.question.label}. Please select your resume file using the upload control.`);
     } else {
       speak(`Question ${data.question_number} of ${data.total_questions}. ${data.question?.label || 'Application question'}. ${data.question?.options?.length ? 'Options are: ' + data.question.options.filter(Boolean).join(', ') + '.' : ''} Please answer when I finish speaking.`, () => beginListening('answer'));
     }
   }
+
+  useEffect(() => {
+    if (busy || !session || !initialResumeId || question?.question?.type !== 'file' || !/resume|\bcv\b/i.test(question.question.label || '')) return;
+    const key = `${session}:${question.question_number}:${initialResumeId}`;
+    if (automaticResumeAttempts.current.has(key)) return;
+    automaticResumeAttempts.current.add(key);
+    setPhase('Uploading your selected saved resume…');
+    request('resume-version',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({resume_id:Number(initialResumeId)})});
+  }, [busy, session, question, initialResumeId]);
 
   useEffect(() => {
     activeRef.current = true;

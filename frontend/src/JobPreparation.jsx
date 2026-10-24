@@ -5,7 +5,7 @@ import './JobPreparation.css';
 
 const labels={responsibilities:'Responsibilities',required:'Essential / required wording',preferred:'Preferred / optional wording',conditions:'Working conditions & other terms',review:'Other wording to review'};
 
-export default function JobPreparation({job}){
+export default function JobPreparation({job,onResumeChange}){
  const[description,setDescription]=useState(job.description||'');const[resumeId,setResumeId]=useState('');
  const[resumes,setResumes]=useState([]);const[result,setResult]=useState(null);const[busy,setBusy]=useState(false);const[error,setError]=useState('');
  useEffect(()=>{let active=true;request('/api/resumes').then(d=>{if(active)setResumes(d.resumes);}).catch(e=>{if(active)setError(e.message);});return()=>{active=false;};},[]);
@@ -15,7 +15,7 @@ export default function JobPreparation({job}){
  return <section className="job-preparation" aria-label="Job decoder and application preparation">
   <h3>Understand the role before applying</h3><p>Decode the description and check your preparation using your saved profile and an optional resume.</p>
   {error&&<p role="alert">{error}</p>}
-  <label>Resume to check<select value={resumeId} disabled={busy} onChange={e=>{setResumeId(e.target.value);invalidate();}}><option value="">No resume selected</option>{resumes.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}</select></label>
+  <label>Resume to check and use for this application<select value={resumeId} disabled={busy} onChange={e=>{setResumeId(e.target.value);onResumeChange?.(e.target.value);invalidate();}}><option value="">No resume selected</option>{resumes.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}</select></label>
   <details><summary>{job.description?'Review / replace description':'Paste the job description'}</summary><label>Job description<textarea rows={7} maxLength={30000} disabled={busy} value={description} onChange={e=>{setDescription(e.target.value);invalidate();}} placeholder="Paste the employer’s description. Text is analyzed locally; the employer page is not fetched."/></label></details>
   <button type="button" className="secondary-button" disabled={busy} onClick={analyze}>{busy?'Checking…':'Decode description & check preparation'}</button>
   {result&&<><div className="preparation-checks"><h3>Your preparation checklist</h3>{result.checks.map(c=><article key={c.label}><strong>{c.label} · {c.state==='available'?'Available':'Prepare'}</strong><p>{c.detail}</p><Link to={c.link}>{c.state==='available'?'Review':'Add'} {c.label.toLowerCase()} →</Link></article>)}</div>

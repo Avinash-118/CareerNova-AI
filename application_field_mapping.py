@@ -19,6 +19,8 @@ def profile_key(field):
         'full name': '__full_name__', 'email': 'email', 'email address': 'email',
         'phone': 'phone', 'phone number': 'phone', 'mobile': 'phone',
         'location': 'location', 'current location': 'location',
+        'location city': 'location', 'what city do you currently reside in': 'location',
+        'linkedin profile': 'linkedin_url', 'website': 'portfolio_url',
         'linkedin': 'linkedin_url', 'linkedin url': 'linkedin_url',
         'github': 'github_url', 'portfolio': 'portfolio_url',
         'university': 'university', 'school': 'university', 'degree': 'degree',

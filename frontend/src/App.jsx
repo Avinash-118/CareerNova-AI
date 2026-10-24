@@ -554,6 +554,8 @@ function JobsPage() {
   const [location, setLocation] = useState("");
   const [role, setRole] = useState("");
   const [selectedJob, setSelectedJob] = useState(null);
+  const [assistantResumeId,setAssistantResumeId]=useState('');
+  useEffect(()=>{if(selectedJob)setAssistantResumeId('');},[selectedJob?.id]);
   const [assistantJob, setAssistantJob] = useState(null);
   const [profileMode, setProfileMode] = useState(false);
   const [voiceActive, setVoiceActive] = useState(false);
@@ -1064,10 +1066,10 @@ function JobsPage() {
       </div>
       {!profileMode && jobs.length < total && <div className="cn-load-more"><button type="button" className="secondary-button" disabled={loading} onClick={() => loadJobs({ requestedPage: page + 1, append: true })}>{loading ? "Loading…" : `Load more (${jobs.length} of ${total})`}</button></div>}
       {sessionStorage.getItem("careernova-pending-application") && !assistantJob && <div style={{margin:"16px 0",padding:16,border:"1px solid #7465b7",borderRadius:12}}><strong>Application waiting for your profile</strong><p>After saving your Candidate Profile, continue the selected application here.</p><button type="button" className="primary-button" onClick={() => { try { beginNovaApplication(JSON.parse(sessionStorage.getItem("careernova-pending-application"))); } catch { say("Please select a job again."); } }}>Continue application</button></div>}
-      {assistantJob && <ApplicationVoiceAssistant job={assistantJob} onClose={() => setAssistantJob(null)}/>}
+      {assistantJob && <ApplicationVoiceAssistant job={assistantJob} initialResumeId={assistantResumeId} onClose={() => setAssistantJob(null)}/>}
       {selectedJob && <div className="cn-apply-overlay" role="dialog" aria-modal="true" aria-label="Apply for selected job"><div className="cn-apply-dialog">
         <button type="button" className="cn-close-dialog" onClick={() => setSelectedJob(null)} aria-label="Close"><X size={20}/></button>
-        <h2>{selectedJob.title}</h2><p>{selectedJob.company} · {selectedJob.location}</p><JobPreparation key={selectedJob.id} job={selectedJob}/><p>Nova can assist with supported application forms. Review and confirm before final submission.</p>
+        <h2>{selectedJob.title}</h2><p>{selectedJob.company} · {selectedJob.location}</p><JobPreparation key={selectedJob.id} job={selectedJob} onResumeChange={setAssistantResumeId}/><p>Nova can assist with supported application forms. Review and confirm before final submission.</p>
         <div className="cn-discovery-actions"><button type="button" className="primary-button" onClick={() => { setAssistantJob(selectedJob); setSelectedJob(null); }}>Start application assistant</button><Link className="secondary-button" to="/resumes" state={{job_title:selectedJob.title,job_description:selectedJob.description||''}}>Prepare resume for this job</Link><Link className="secondary-button" to="/interview" state={{job_title:selectedJob.title,job_description:selectedJob.description||''}}>Practise an interview</Link>
         {/^https?:\/\//i.test(selectedJob.apply_url || "") && <a className="secondary-button" href={selectedJob.apply_url} target="_blank" rel="noopener noreferrer">Open job posting <ArrowUpRight size={16}/></a>}</div>
       </div></div>}
@@ -1380,6 +1382,14 @@ function ScrollManager() {
   }, [pathname, hash]);
   return null;
 }
+function LocalAgentDemo() {
+  const [open,setOpen]=useState(false);
+  const [resumes,setResumes]=useState([]);
+  const [resume,setResume]=useState('');
+  const [error,setError]=useState('');
+  useEffect(()=>{request('/api/resumes').then(d=>setResumes(d.resumes)).catch(e=>setError(e.message));},[]);
+  return <section className="platform-page"><h1>Local application agent trial</h1><p>Try your saved Candidate Profile and selected resume on a local sample form. No employer receives this test. Nothing is submitted.</p><Link to="/profile">Candidate Profile</Link> · <Link to="/resumes">Resume Library</Link><p role="alert">{error}</p><label>Saved resume<select value={resume} onChange={e=>setResume(e.target.value)}><option value="">Choose a saved resume</option>{resumes.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}</select></label><button className="primary-button" disabled={!resume} onClick={()=>setOpen(true)}>Run local agent with saved profile and resume</button>{open&&<ApplicationVoiceAssistant initialResumeId={resume} job={{title:'Local sample application',company:'CareerNova test',apply_url:'http://127.0.0.1:8000/api/agent/demo-form'}} onClose={()=>setOpen(false)}/>}</section>;
+}
 function App() {
   return (
     <AuthProvider>
@@ -1390,6 +1400,7 @@ function App() {
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route element={<ProtectedWorkspace/>}>
+          {import.meta.env.DEV && <Route path="/agent-demo" element={<LocalAgentDemo/>}/>}
           <Route path="/jobs" element={<JobsPage />} />
 
           <Route path="/resume" element={<ResumePage />} />

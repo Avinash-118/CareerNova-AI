@@ -27,6 +27,15 @@ class AnswerRequest(BaseModel):
 class EvidenceRequest(BaseModel):
     resume_id: int | None = None
 
+@application_session_router.get('/demo-form')
+def demo_form():
+    from deployment_config import production
+    from fastapi.responses import HTMLResponse
+    from pathlib import Path
+    if production():
+        raise HTTPException(404, 'Not found')
+    return HTMLResponse(Path(__file__).with_name('test_application.html').read_text())
+
 @application_session_router.get('/capabilities')
 def capabilities(user=Depends(get_current_user)):
     from deployment_config import browser_assistant_enabled

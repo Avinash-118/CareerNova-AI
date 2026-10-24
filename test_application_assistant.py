@@ -6,6 +6,8 @@ from application_session import ApplicationSession
 
 class ApplicationAssistantTests(unittest.TestCase):
     def test_metadata_mapping(self):
+        self.assertEqual(profile_key({'label':'Location (City)'}),'location')
+        self.assertEqual(profile_key({'label':'What city do you currently reside in?'}),'location')
         self.assertEqual(profile_key({'id': 'firstName'}), 'first_name')
         self.assertEqual(profile_key({'name': 'email_address'}), 'email')
         self.assertEqual(profile_key({'autocomplete': 'section-applicant given-name'}), 'first_name')
@@ -43,6 +45,38 @@ class ApplicationAssistantTests(unittest.TestCase):
         session._autofill({'first_name': 'Asha'})
         control.fill.assert_not_called()
         self.assertEqual(session.answers[0], 'Existing')
+
+    def test_upload_must_be_retained(self):
+        session, control = self.session()
+        session.fields=[{'label':'Resume/CV','type':'file','tag':'input'}]
+        control.evaluate.return_value=None
+        with self.assertRaisesRegex(ValueError,'retain'):
+            session._upload('resume.pdf',b'test')
+        self.assertNotIn(0,session.answers)
+
+    def test_upload_verified_and_recorded(self):
+        session, control = self.session()
+        session.fields=[{'label':'Resume/CV','type':'file','tag':'input'}]
+        control.evaluate.return_value='resume.pdf'
+        session._upload('resume.pdf',b'test')
+        self.assertEqual(session.answers[0],'Uploaded: resume.pdf')
+
+    def test_custom_option_requires_retained_selection(self):
+        session, control = self.session()
+        frame=MagicMock();session.page=MagicMock();session.page.frames=[frame]
+        option=frame.get_by_role.return_value;option.count.return_value=1
+        session._combo_value=lambda _: 'Different city'
+        with self.assertRaisesRegex(ValueError,'verified'):
+            session._select_custom(control,'Boston')
+        frame.get_by_role.assert_called_with('option',name='Boston',exact=True)
+
+    def test_custom_option_commits_exact_match(self):
+        session, control = self.session()
+        frame=MagicMock();session.page=MagicMock();session.page.frames=[frame]
+        option=frame.get_by_role.return_value;option.count.return_value=1
+        session._combo_value=lambda _: 'Boston'
+        session._select_custom(control,'Boston')
+        option.click.assert_called_once()
 
     def test_progress_revisit_and_recovery(self):
         session, control = self.session()
