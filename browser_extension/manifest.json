@@ -1,8 +1,11 @@
 {
   "manifest_version": 3,
   "name": "CareerNova Autofill",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Fill empty application fields with your imported CareerNova profile on request.",
   "permissions": ["activeTab", "scripting", "storage"],
+  "optional_host_permissions": ["https://*/*"],
+  "background": {"service_worker":"background.js"},
+  "content_scripts": [{"matches":["https://career-nova-ai-one.vercel.app/*"],"js":["bridge.js"]}],
   "action": {"default_popup": "popup.html"}
 }
