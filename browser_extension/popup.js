@@ -19,7 +19,7 @@ fill.addEventListener('click',async()=>{
     if(!/^https?:\/\//.test(tab.url||''))throw new Error('Open an employer application page first.');
     const {profile}=await chrome.storage.local.get('profile');if(!profile)throw new Error('Import your profile first.');
     await chrome.scripting.executeScript({target:{tabId:tab.id},files:['fill.js']});
-    const result=await chrome.scripting.executeScript({target:{tabId:tab.id},func:p=>fillProfile(p),args:[profile]});
-    const summary=result[0]?.result;status.textContent=`${summary?.filled||0} fields filled. ${summary?.failed||0} could not be verified. Review the page; select menus, embedded frames, resume uploads and submission remain manual.`;
+    const result=await chrome.scripting.executeScript({target:{tabId:tab.id},func:p=>watchProfile(p),args:[profile]});
+    const summary=result[0]?.result;status.textContent=`${summary?.filled||0} fields filled. Watching this page for new fields for 10 minutes. After a redirect to a new page, click Fill this page again. Select menus, embedded frames, uploads and submission remain manual.`;
   }catch(err){status.textContent='Could not fill this page: '+err.message;}finally{fill.disabled=false;}
 });

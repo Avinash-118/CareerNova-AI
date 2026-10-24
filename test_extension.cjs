@@ -16,3 +16,17 @@ const result=context.fillProfile({first_name:'Test',last_name:'Candidate',email:
 assert.equal(result.filled,3);assert.equal(fields[0].value,'Test');assert.equal(fields[1].value,'test@example.com');assert.equal(fields[2].value,'keep-existing');assert.equal(fields[3].value,'');assert.equal(fields[4].value,'');assert.equal(fields[5].value,'');assert.equal(fields[6].value,'');assert.equal(fields[7].value,'Test Candidate');assert.deepEqual(fields[0].events,['input','change']);
 assert.equal(context.fillProfile({first_name:'Replacement'}).filled,0);
 console.log('Extension fill checks passed: explicit labels, existing values, excluded choices/secrets/files, input events, repeat fill.');
+const placeholders=[new Input(''),new Input(''),new Input('','email')];
+placeholders[0].getAttribute=k=>k==='placeholder'?'Enter your first name':null;
+placeholders[1].getAttribute=k=>k==='placeholder'?'Enter your last name':null;
+context.document.querySelectorAll=()=>placeholders;
+assert.equal(context.fillProfile({first_name:'Test',last_name:'Candidate',email:'test@example.com'}).filled,3);
+assert.equal(placeholders[0].value,'Test');assert.equal(placeholders[1].value,'Candidate');
+let mutation;let queued;let disconnected=false;
+context.window={};context.document.documentElement={};
+context.MutationObserver=class{constructor(cb){mutation=cb;}observe(){}disconnect(){disconnected=true;}};
+context.setTimeout=(cb,ms)=>{if(ms===250)queued=cb;return ms;};context.clearTimeout=()=>{};
+context.watchProfile({first_name:'Test'});
+const late=new Input('First name');placeholders.push(late);mutation();queued();assert.equal(late.value,'Test');
+context.window.careerNovaAutofillStop();assert.equal(disconnected,true);
+console.log('Placeholder, email type and dynamically inserted field checks passed.');
