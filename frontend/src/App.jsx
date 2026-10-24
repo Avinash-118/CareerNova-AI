@@ -85,6 +85,13 @@ function AuthPage({ mode }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
+  const [slowSignIn, setSlowSignIn] = useState(false);
+  useEffect(() => {
+    setSlowSignIn(false);
+    if (!busy) return;
+    const timer = setTimeout(() => setSlowSignIn(true), 8000);
+    return () => clearTimeout(timer);
+  }, [busy]);
   const [error, setError] = useState("");
   async function submit(event) {
     event.preventDefault();
@@ -119,6 +126,7 @@ function AuthPage({ mode }) {
       <label>Password<input required type="password" autoComplete={registering ? "new-password" : "current-password"} minLength={registering ? 12 : undefined} value={password} onChange={e=>setPassword(e.target.value)} placeholder={registering ? "At least 12 characters" : "Your password"} style={{display:"block",width:"100%",padding:12,marginTop:6}}/></label>
       {error && <p role="alert" style={{color:"#ff9aa8"}}>{error}</p>}
       <button className="primary-button" type="submit" disabled={busy}>{busy ? "Please wait..." : registering ? "Create Account" : "Login"} <ArrowRight size={18}/></button>
+      {busy && <p role="status">{slowSignIn ? 'This is taking longer than usual. Our free server may be waking up after inactivity. You can keep this page open; we will show an error if it cannot connect.' : registering ? 'Creating your account…' : 'Signing you in…'}</p>}
       <p>{registering ? "Already registered?" : "New to CareerNova?"} <Link to={registering ? "/login" : "/register"}>{registering ? "Login" : "Create an account"}</Link></p>
       {!registering && <Link to="/forgot-password">Forgot your password?</Link>}
     </form>

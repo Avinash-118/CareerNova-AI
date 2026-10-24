@@ -1,12 +1,23 @@
 export const API_URL = import.meta.env.VITE_API_URL || '';
 export async function apiFetch(path, options = {}) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 90000);
+  const cancel = () => controller.abort();
+  options.signal?.addEventListener('abort', cancel, {once:true});
+  if (options.signal?.aborted) controller.abort();
   let response;
   try { response = await fetch(path, {
-    ...options, credentials: 'include',
+    ...options, signal: controller.signal, credentials: 'include',
     headers: { 'X-CareerNova-Client': 'web', ...options.headers },
   }); } catch (error) {
-    if (error.name === 'AbortError') throw error;
+    if (error.name === 'AbortError') {
+      if (options.signal?.aborted) throw error;
+      throw new Error('The server took too long to respond. The free server may be waking up. Please try again shortly.');
+    }
     throw new Error('Connection interrupted. Your change could not be confirmed. Refresh your saved jobs before retrying; the free server may be waking up.');
+  } finally {
+    clearTimeout(timeout);
+    options.signal?.removeEventListener('abort', cancel);
   }
   if (response.status === 401 && !/\/api\/auth\//.test(path)) {
     window.dispatchEvent(new Event('careernova-session-expired'));
